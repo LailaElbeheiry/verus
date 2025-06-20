@@ -206,6 +206,30 @@ pub fn typ_args_for_datatype_typ(typ: &Typ) -> &Typs {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct TypWithoutImplPaths(pub Typ);
+
+impl PartialEq for TypWithoutImplPaths {
+    fn eq(&self, other: &Self) -> bool {
+        types_equal(&self.0, &other.0)
+    }
+}
+
+impl Eq for TypWithoutImplPaths {}
+
+impl std::hash::Hash for TypWithoutImplPaths {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let mut t: TypX = (*self.0).clone();
+        match &mut t {
+            TypX::Datatype(_, _, impl_paths) => {
+                *impl_paths = Arc::new(vec![]);
+            }
+            _ => (),
+        }
+        t.hash(state);
+    }
+}
+
 pub const QUANT_FORALL: Quant = Quant { quant: air::ast::Quant::Forall };
 
 pub fn params_equal_opt(

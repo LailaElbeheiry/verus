@@ -90,6 +90,7 @@ pub(crate) fn extract_tuple<'tcx>(expr: &'tcx Expr<'tcx>) -> Vec<&'tcx Expr<'tcx
 
 pub(crate) fn closure_param_typs<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     expr: &Expr<'tcx>,
 ) -> Result<Vec<Typ>, VirErr> {
     let node_type = bctx.types.node_type(expr.hir_id);
@@ -101,6 +102,7 @@ pub(crate) fn closure_param_typs<'tcx>(
             for t in sig.inputs().skip_binder().iter() {
                 args.push(mid_ty_to_vir(
                     bctx.ctxt.tcx,
+                    collected_ownership_hints,
                     &bctx.ctxt.verus_items,
                     bctx.fun_id,
                     expr.span,
@@ -118,7 +120,11 @@ pub(crate) fn closure_param_typs<'tcx>(
     }
 }
 
-fn closure_ret_typ<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<Typ, VirErr> {
+fn closure_ret_typ<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
+    expr: &Expr<'tcx>,
+) -> Result<Typ, VirErr> {
     let node_type = bctx.types.node_type(expr.hir_id);
     match node_type.kind() {
         TyKind::Closure(_def, substs) => {
@@ -126,6 +132,7 @@ fn closure_ret_typ<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<Typ
             let t = sig.output().skip_binder();
             mid_ty_to_vir(
                 bctx.ctxt.tcx,
+                collected_ownership_hints,
                 &bctx.ctxt.verus_items,
                 bctx.fun_id,
                 expr.span,
@@ -201,6 +208,7 @@ pub(crate) fn check_lit_int(
 
 pub(crate) fn expr_to_vir_inner<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     expr: &Expr<'tcx>,
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
@@ -222,15 +230,23 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
 
     let adjustments = bctx.types.expr_adjustments(expr);
 
-    expr_to_vir_with_adjustments(bctx, expr, modifier, adjustments, adjustments.len())
+    expr_to_vir_with_adjustments(
+        bctx,
+        collected_ownership_hints,
+        expr,
+        modifier,
+        adjustments,
+        adjustments.len(),
+    )
 }
 
 pub(crate) fn expr_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     expr: &Expr<'tcx>,
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
-    let mut vir_expr = expr_to_vir_inner(bctx, expr, modifier)?;
+    let mut vir_expr = expr_to_vir_inner(bctx, collected_ownership_hints, expr, modifier)?;
     let attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
     for group in get_trigger(attrs)? {
         vir_expr = vir_expr.new_x(ExprX::Unary(UnaryOp::Trigger(group), vir_expr.clone()));
@@ -407,6 +423,7 @@ fn get_adt_res<'tcx>(
 
 pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     expr: &Expr<'tcx>,
     res: &Res,
     args_slice: &[Expr<'tcx>],
@@ -415,7 +432,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     expect_ctor_const: bool,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
-    let expr_typ = typ_of_node(bctx, expr.span, &expr.hir_id, false)?;
+    let expr_typ = typ_of_node(bctx, collected_ownership_hints, expr.span, &expr.hir_id, false)?;
 
     let (adt_def_id, variant_def, _is_enum) =
         get_adt_res_struct_enum(tcx, *res, fun_span, expect_ctor_const)?;
@@ -427,7 +444,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
             .iter()
             .enumerate()
             .map(|(i, e)| -> Result<_, VirErr> {
-                let vir = expr_to_vir(bctx, e, modifier)?;
+                let vir = expr_to_vir(bctx, collected_ownership_hints, e, modifier)?;
                 Ok(ident_binder(&positional_field_ident(i), &vir))
             })
             .collect::<Result<Vec<_>, _>>()?,
@@ -460,10 +477,11 @@ fn handle_dot_dot(
 
 pub(crate) fn pattern_to_vir_inner<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     pat: &Pat<'tcx>,
 ) -> Result<vir::ast::Pattern, VirErr> {
     let tcx = bctx.ctxt.tcx;
-    let pat_typ = typ_of_node(bctx, pat.span, &pat.hir_id, false)?;
+    let pat_typ = typ_of_node(bctx, collected_ownership_hints, pat.span, &pat.hir_id, false)?;
     unsupported_err_unless!(pat.default_binding_modes, pat.span, "complex pattern");
     let pattern = match &pat.kind {
         PatKind::Wild => PatternX::Wildcard(false),
@@ -475,9 +493,11 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             let name = local_to_var(x, canonical.local_id);
             match subpat {
                 None => PatternX::Var { name, mutable },
-                Some(subpat) => {
-                    PatternX::Binding { name, mutable, sub_pat: pattern_to_vir(bctx, subpat)? }
-                }
+                Some(subpat) => PatternX::Binding {
+                    name,
+                    mutable,
+                    sub_pat: pattern_to_vir(bctx, collected_ownership_hints, subpat)?,
+                },
             }
         }
         PatKind::Path(qpath) => {
@@ -525,7 +545,7 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             for (i, pat) in pats.iter().enumerate() {
                 let actual_idx = if i < pos_to_insert_wildcards { i } else { i + n_wildcards };
 
-                let pattern = pattern_to_vir(bctx, pat)?;
+                let pattern = pattern_to_vir(bctx, collected_ownership_hints, pat)?;
                 let binder = ident_binder(&positional_field_ident(actual_idx), &pattern);
                 binders.push(binder);
             }
@@ -547,7 +567,7 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             for (i, pat) in pats.iter().enumerate() {
                 let actual_idx = if i < pos_to_insert_wildcards { i } else { i + n_wildcards };
 
-                let pattern = pattern_to_vir(bctx, pat)?;
+                let pattern = pattern_to_vir(bctx, collected_ownership_hints, pat)?;
                 let binder = ident_binder(&positional_field_ident(actual_idx), &pattern);
                 binders.push(binder);
             }
@@ -563,7 +583,7 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
 
             let mut binders: Vec<Binder<vir::ast::Pattern>> = Vec::new();
             for fpat in pats.iter() {
-                let pattern = pattern_to_vir(bctx, &fpat.pat)?;
+                let pattern = pattern_to_vir(bctx, collected_ownership_hints, &fpat.pat)?;
                 let ident = field_ident_from_rust(fpat.ident.as_str());
                 let binder = ident_binder(&ident, &pattern);
                 binders.push(binder);
@@ -571,18 +591,18 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             PatternX::Constructor(Dt::Path(vir_path), variant_name, Arc::new(binders))
         }
         PatKind::Box(pat) => {
-            return pattern_to_vir(bctx, pat);
+            return pattern_to_vir(bctx, collected_ownership_hints, pat);
         }
         PatKind::Or(pats) => {
             if pats.len() == 1 {
-                return pattern_to_vir(bctx, &pats[0]);
+                return pattern_to_vir(bctx, collected_ownership_hints, &pats[0]);
             }
 
             assert!(pats.len() >= 2);
 
             let mut patterns: Vec<vir::ast::Pattern> = Vec::new();
             for pat in pats.iter() {
-                patterns.push(pattern_to_vir(bctx, pat)?);
+                patterns.push(pattern_to_vir(bctx, collected_ownership_hints, pat)?);
             }
 
             // Arrange it like Or(a, Or(b, Or(c, d)))
@@ -598,14 +618,15 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             pat_or
         }
         PatKind::Lit(expr) => {
-            let e = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
+            let e = expr_to_vir(bctx, collected_ownership_hints, expr, ExprModifier::REGULAR)?;
             PatternX::Expr(e)
         }
         PatKind::Range(expr1_opt, expr2_opt, range_end) => {
             let e1 = match expr1_opt {
                 None => None,
                 Some(expr1) => {
-                    let e1 = expr_to_vir(bctx, expr1, ExprModifier::REGULAR)?;
+                    let e1 =
+                        expr_to_vir(bctx, collected_ownership_hints, expr1, ExprModifier::REGULAR)?;
                     if !matches!(&*e1.typ, TypX::Int(_)) {
                         unsupported_err!(expr1.span, "range pattern with non-int type");
                     }
@@ -615,7 +636,8 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             let e2 = match expr2_opt {
                 None => None,
                 Some(expr2) => {
-                    let e2 = expr_to_vir(bctx, expr2, ExprModifier::REGULAR)?;
+                    let e2 =
+                        expr_to_vir(bctx, collected_ownership_hints, expr2, ExprModifier::REGULAR)?;
                     if !matches!(&*e2.typ, TypX::Int(_)) {
                         unsupported_err!(expr2.span, "range pattern with non-int type");
                     }
@@ -642,9 +664,10 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
 
 pub(crate) fn pattern_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     pat: &Pat<'tcx>,
 ) -> Result<vir::ast::Pattern, VirErr> {
-    let vir_pat = pattern_to_vir_inner(bctx, pat)?;
+    let vir_pat = pattern_to_vir_inner(bctx, collected_ownership_hints, pat)?;
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     erasure_info.hir_vir_ids.push((pat.hir_id, vir_pat.span.id));
     Ok(vir_pat)
@@ -652,6 +675,7 @@ pub(crate) fn pattern_to_vir<'tcx>(
 
 pub(crate) fn block_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     block: &Block<'tcx>,
     span: &Span,
     ty: &Typ,
@@ -659,13 +683,17 @@ pub(crate) fn block_to_vir<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     let mut vir_stmts: Vec<vir::ast::Stmt> = Vec::new();
     let mut stmts_iter = block.stmts.iter();
-    while let Some(mut some_stmts) = stmts_to_vir(bctx, &mut stmts_iter)? {
+    while let Some(mut some_stmts) = stmts_to_vir(bctx, collected_ownership_hints, &mut stmts_iter)?
+    {
         vir_stmts.append(&mut some_stmts);
     }
     if block.stmts.len() != 0 {
         modifier = ExprModifier { deref_mut: false, ..modifier };
     }
-    let vir_expr = block.expr.map(|expr| expr_to_vir(bctx, &expr, modifier)).transpose()?;
+    let vir_expr = block
+        .expr
+        .map(|expr| expr_to_vir(bctx, collected_ownership_hints, &expr, modifier))
+        .transpose()?;
 
     let x = ExprX::Block(Arc::new(vir_stmts), vir_expr);
     Ok(bctx.spanned_typed_new(span.clone(), ty, x))
@@ -855,6 +883,7 @@ pub(crate) fn invariant_block_close(close_stmt: &Stmt) -> Option<(HirId, HirId, 
 
 fn invariant_block_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     expr: &Expr<'tcx>,
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
@@ -923,13 +952,18 @@ fn invariant_block_to_vir<'tcx>(
         StmtKind::Expr(e @ Expr { kind: ExprKind::Block(body, _), .. }) => {
             assert!(!is_invariant_block(bctx, e)?);
             let vir_stmts: Stmts = Arc::new(
-                slice_vec_map_result(body.stmts, |stmt| stmt_to_vir(bctx, stmt))?
-                    .into_iter()
-                    .flatten()
-                    .collect(),
+                slice_vec_map_result(body.stmts, |stmt| {
+                    stmt_to_vir(bctx, collected_ownership_hints, stmt)
+                })?
+                .into_iter()
+                .flatten()
+                .collect(),
             );
-            let vir_expr = body.expr.map(|expr| expr_to_vir(bctx, &expr, modifier)).transpose()?;
-            let ty = typ_of_node(bctx, e.span, &e.hir_id, false)?;
+            let vir_expr = body
+                .expr
+                .map(|expr| expr_to_vir(bctx, collected_ownership_hints, &expr, modifier))
+                .transpose()?;
+            let ty = typ_of_node(bctx, collected_ownership_hints, e.span, &e.hir_id, false)?;
             // NOTE: we use body.span here instead of e.span
             // body.span leads to better error messages
             // (e.g., the "Cannot show invariant holds at end of block" error)
@@ -941,22 +975,22 @@ fn invariant_block_to_vir<'tcx>(
         }
     };
 
-    let vir_arg = expr_to_vir(bctx, &inv_arg, modifier)?;
+    let vir_arg = expr_to_vir(bctx, collected_ownership_hints, &inv_arg, modifier)?;
 
     let name = pat_to_var(inner_pat)?;
-    let inner_ty = typ_of_node(bctx, inner_pat.span, &inner_hir, false)?;
+    let inner_ty = typ_of_node(bctx, collected_ownership_hints, inner_pat.span, &inner_hir, false)?;
     let vir_binder = Arc::new(VarBinderX { name, a: inner_ty });
 
     let mid_exp = bctx.spanned_typed_new(
         mid_stmt.span,
-        &typ_of_node(bctx, expr.span, &expr.hir_id, false)?,
+        &typ_of_node(bctx, collected_ownership_hints, expr.span, &expr.hir_id, false)?,
         ExprX::OpenInvariant(vir_arg, vir_binder, vir_body, atomicity),
     );
-    let spend_stmt_vir = stmt_to_vir(&bctx, spend_stmt)
+    let spend_stmt_vir = stmt_to_vir(&bctx, collected_ownership_hints, spend_stmt)
         .expect("could not convert spend_open_invariant_credit call to vir");
     Ok(bctx.spanned_typed_new(
         expr.span,
-        &typ_of_node(bctx, expr.span, &expr.hir_id, false)?,
+        &typ_of_node(bctx, collected_ownership_hints, expr.span, &expr.hir_id, false)?,
         ExprX::Block(Arc::new(spend_stmt_vir), Some(mid_exp)),
     ))
 }
@@ -991,6 +1025,7 @@ pub(crate) fn is_expr_typ_mut_ref<'tcx>(
 
 pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     expr: &Expr<'tcx>,
     current_modifier: ExprModifier,
     adjustments: &[Adjustment<'tcx>],
@@ -1022,9 +1057,10 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     // peeling off the adjustment (i-1).
     // Whereas the node (expr, 0) is just expr by itself.
 
-    let expr_typ = || {
+    let expr_typ = |collected_ownership_hints: &mut vir::ast::OwnershipHintsX| {
         mid_ty_to_vir(
             bctx.ctxt.tcx,
+            collected_ownership_hints,
             &bctx.ctxt.verus_items,
             bctx.fun_id,
             expr.span,
@@ -1034,7 +1070,8 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     };
 
     if adjustment_idx == 0 {
-        let vir_expr = expr_to_vir_innermost(bctx, expr, current_modifier)?;
+        let vir_expr =
+            expr_to_vir_innermost(bctx, collected_ownership_hints, expr, current_modifier)?;
 
         let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
         erasure_info.hir_vir_ids.push((expr.hir_id, vir_expr.span.id));
@@ -1060,19 +1097,21 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
         Adjust::NeverToAny => {
             let e = expr_to_vir_with_adjustments(
                 bctx,
+                collected_ownership_hints,
                 expr,
                 current_modifier,
                 adjustments,
                 adjustment_idx - 1,
             )?;
             let x = ExprX::NeverToAny(e);
-            Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, x))
+            Ok(bctx.spanned_typed_new(expr.span, &expr_typ(collected_ownership_hints)?, x))
         }
         Adjust::Deref(None) => {
             // handle same way as the UnOp::Deref case
             let new_modifier = is_expr_typ_mut_ref(get_inner_ty(), current_modifier)?;
             let mut new_expr = expr_to_vir_with_adjustments(
                 bctx,
+                collected_ownership_hints,
                 expr,
                 new_modifier,
                 adjustments,
@@ -1100,6 +1139,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             // without the refs.
             let inner = expr_to_vir_with_adjustments(
                 bctx,
+                collected_ownership_hints,
                 expr,
                 current_modifier,
                 adjustments,
@@ -1108,11 +1148,13 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             if auto_deref_supported_for_ty(bctx.ctxt.tcx, &get_inner_ty()) {
                 inner
             } else {
+                let t = expr_typ(collected_ownership_hints)?;
                 crate::fn_call_to_vir::deref_to_vir(
                     bctx,
+                    collected_ownership_hints,
                     deref.method_call(bctx.ctxt.tcx),
                     inner?,
-                    expr_typ()?,
+                    t,
                     get_inner_ty(),
                     expr.span,
                 )
@@ -1122,6 +1164,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             // Similar to ExprKind::AddrOf
             let mut new_expr: Arc<SpannedTyped<vir::ast::ExprX>> = expr_to_vir_with_adjustments(
                 bctx,
+                collected_ownership_hints,
                 expr,
                 ExprModifier::REGULAR,
                 adjustments,
@@ -1139,6 +1182,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 new_modifier.deref_mut = false;
                 expr_to_vir_with_adjustments(
                     bctx,
+                    collected_ownership_hints,
                     expr,
                     new_modifier,
                     adjustments,
@@ -1173,6 +1217,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
 
             let arg = expr_to_vir_with_adjustments(
                 bctx,
+                collected_ownership_hints,
                 expr,
                 current_modifier,
                 adjustments,
@@ -1259,6 +1304,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 let x = ExprX::Call(call_target, args);
                 let expr_typ = mid_ty_to_vir(
                     bctx.ctxt.tcx,
+                    collected_ownership_hints,
                     &bctx.ctxt.verus_items,
                     bctx.fun_id,
                     expr.span,
@@ -1276,6 +1322,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
         Adjust::Pointer(PointerCoercion::MutToConstPointer) => {
             let mut new_expr: Arc<SpannedTyped<vir::ast::ExprX>> = expr_to_vir_with_adjustments(
                 bctx,
+                collected_ownership_hints,
                 expr,
                 ExprModifier::REGULAR,
                 adjustments,
@@ -1301,9 +1348,13 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
 /// Callers must guarantee that expr_vir is a vir representation of expr.
 pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     expr: &'tcx Expr<'tcx>,
     expr_vir: vir::ast::Expr,
-    mk_expr: impl Fn(ExprX) -> Result<vir::ast::Expr, vir::messages::Message>,
+    mk_expr: impl Fn(
+        ExprX,
+        &mut vir::ast::OwnershipHintsX,
+    ) -> Result<vir::ast::Expr, vir::messages::Message>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let ty = bctx.types.node_type(expr.hir_id);
@@ -1320,7 +1371,10 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
             let adt = tcx.adt_def(enum_did);
             let idx = adt.variant_index_with_id(vdef.def_id);
             let val = adt.discriminant_for_variant(tcx, idx).val;
-            return mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(val)));
+            return mk_expr(
+                ExprX::Const(vir::ast_util::const_int_from_u128(val)),
+                collected_ownership_hints,
+            );
         }
     }
 
@@ -1330,15 +1384,24 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
     let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
     for (idx, vdef) in adt.variants().iter_enumerated() {
         let val = adt.discriminant_for_variant(tcx, idx).val;
-        let cast_to = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(val)))?;
+        let cast_to = mk_expr(
+            ExprX::Const(vir::ast_util::const_int_from_u128(val)),
+            collected_ownership_hints,
+        )?;
         unsupported_err_unless!(
             vdef.fields.len() == 0,
             expr.span,
             "Enum variant should not contain any fields."
         );
         let variant_name = vdef.name.to_string();
-        let (adt_path, _) =
-            crate::fn_call_to_vir::check_variant_field(bctx, expr.span, expr, &variant_name, None)?;
+        let (adt_path, _) = crate::fn_call_to_vir::check_variant_field(
+            bctx,
+            collected_ownership_hints,
+            expr.span,
+            expr,
+            &variant_name,
+            None,
+        )?;
 
         let pattern = bctx.spanned_typed_new(
             expr.span,
@@ -1347,38 +1410,45 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
         );
         let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
         erasure_info.hir_vir_ids.push((expr.hir_id, pattern.span.id));
-        let guard = mk_expr(ExprX::Const(Constant::Bool(true)))?;
+        let guard = mk_expr(ExprX::Const(Constant::Bool(true)), collected_ownership_hints)?;
         let body = cast_to;
         let vir_arm = bctx.spanned_new(expr.span, ArmX { pattern, guard, body });
         vir_arms.push(vir_arm);
     }
     unsupported_err_unless!(vir_arms.len() > 0, expr.span, "Zero-sized empty Enum expr");
-    return Ok(mk_expr(ExprX::Match(expr_vir, Arc::new(vir_arms)))?);
+    return Ok(mk_expr(ExprX::Match(expr_vir, Arc::new(vir_arms)), collected_ownership_hints)?);
 }
 
 pub(crate) fn expr_to_vir_innermost<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     expr: &Expr<'tcx>,
     current_modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let tc = bctx.types;
-    let expr_typ = || {
+    let expr_typ = |collected_ownership_hints: &mut vir::ast::OwnershipHintsX| {
         if current_modifier.deref_mut {
-            typ_of_node_expect_mut_ref(bctx, expr.span, &expr.hir_id)
+            typ_of_node_expect_mut_ref(bctx, collected_ownership_hints, expr.span, &expr.hir_id)
         } else {
-            typ_of_node(bctx, expr.span, &expr.hir_id, false)
+            typ_of_node(bctx, collected_ownership_hints, expr.span, &expr.hir_id, false)
         }
     };
-    let mk_expr = move |x: ExprX| Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, x));
+    let mk_expr = move |x: ExprX, collected_ownership_hints: &mut vir::ast::OwnershipHintsX| {
+        Ok(bctx.spanned_typed_new(expr.span, &expr_typ(collected_ownership_hints)?, x))
+    };
 
     let modifier = ExprModifier { deref_mut: false, ..current_modifier };
 
-    let mk_lit_int = |in_negative_literal: bool, i: u128, typ: Typ| {
-        check_lit_int(&bctx.ctxt, expr.span, in_negative_literal, i, &typ)?;
-        let c = vir::ast_util::const_int_from_u128(i);
-        mk_expr(ExprX::Const(c))
-    };
+    let mk_lit_int =
+        |in_negative_literal: bool,
+         i: u128,
+         typ: Typ,
+         collected_ownership_hints: &mut vir::ast::OwnershipHintsX| {
+            check_lit_int(&bctx.ctxt, expr.span, in_negative_literal, i, &typ)?;
+            let c = vir::ast_util::const_int_from_u128(i);
+            mk_expr(ExprX::Const(c), collected_ownership_hints)
+        };
 
     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
@@ -1422,11 +1492,19 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
     match &expr.kind {
         ExprKind::Block(body, _) => {
             if is_invariant_block(bctx, expr)? {
-                invariant_block_to_vir(bctx, expr, modifier)
+                invariant_block_to_vir(bctx, collected_ownership_hints, expr, modifier)
             } else if let Some(g_attr) = get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(expr.hir_id))
             {
                 let bctx = &BodyCtxt { in_ghost: true, ..bctx.clone() };
-                let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?, current_modifier);
+                let t = expr_typ(collected_ownership_hints)?;
+                let block = block_to_vir(
+                    bctx,
+                    collected_ownership_hints,
+                    body,
+                    &expr.span,
+                    &t,
+                    current_modifier,
+                );
                 let tracked = match g_attr {
                     GhostBlockAttr::Proof => false,
                     GhostBlockAttr::Tracked => true,
@@ -1437,11 +1515,16 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         return err_span(expr.span, "unexpected ghost block wrapper");
                     }
                 };
-                mk_expr(ExprX::Ghost { alloc_wrapper: false, tracked, expr: block? })
+                mk_expr(
+                    ExprX::Ghost { alloc_wrapper: false, tracked, expr: block? },
+                    collected_ownership_hints,
+                )
             } else {
-                let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?, modifier);
+                let t = expr_typ(collected_ownership_hints)?;
+                let block =
+                    block_to_vir(bctx, collected_ownership_hints, body, &expr.span, &t, modifier);
                 if crate::attributes::is_proof_in_spec(bctx.ctxt.tcx.hir().attrs(expr.hir_id)) {
-                    mk_expr(ExprX::ProofInSpec(block?))
+                    mk_expr(ExprX::ProofInSpec(block?), collected_ownership_hints)
                 } else {
                     block
                 }
@@ -1462,6 +1545,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     },
                 )) => Some(expr_tuple_datatype_ctor_to_vir(
                     bctx,
+                    collected_ownership_hints,
                     expr,
                     res,
                     *args_slice,
@@ -1480,6 +1564,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         | rustc_hir::def::Res::SelfCtor(_) => {
                             Some(expr_tuple_datatype_ctor_to_vir(
                                 bctx,
+                                collected_ownership_hints,
                                 expr,
                                 &res,
                                 *args_slice,
@@ -1497,6 +1582,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             let args = args_slice.iter().collect();
                             Some(fn_call_to_vir(
                                 bctx,
+                                collected_ownership_hints,
                                 expr,
                                 def_id,
                                 bctx.types.node_args(fun.hir_id),
@@ -1526,7 +1612,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 None => {
                     // a dynamically computed function
                     if bctx.external_body {
-                        return mk_expr(ExprX::Block(Arc::new(vec![]), None));
+                        return mk_expr(
+                            ExprX::Block(Arc::new(vec![]), None),
+                            collected_ownership_hints,
+                        );
                     }
 
                     // For FnMut, Rust automatically inserts a mutable reference, e.g.,
@@ -1540,11 +1629,19 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     };
                     let fun_modifier =
                         if is_mut { ExprModifier::DEREF_MUT } else { ExprModifier::REGULAR };
-                    let vir_fun = expr_to_vir(bctx, fun, fun_modifier)?;
+                    let vir_fun = expr_to_vir(bctx, collected_ownership_hints, fun, fun_modifier)?;
 
                     let args: Vec<&'tcx Expr<'tcx>> = args_slice.iter().collect();
-                    let vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg, modifier))?;
-                    let expr_typ = typ_of_node(bctx, expr.span, &expr.hir_id, false)?;
+                    let vir_args = vec_map_result(&args, |arg| {
+                        expr_to_vir(bctx, collected_ownership_hints, arg, modifier)
+                    })?;
+                    let expr_typ = typ_of_node(
+                        bctx,
+                        collected_ownership_hints,
+                        expr.span,
+                        &expr.hir_id,
+                        false,
+                    )?;
 
                     let proof_fn = crate::rust_to_vir_base::try_get_proof_fn_modes(
                         &bctx.ctxt, expr.span, &fun_ty,
@@ -1580,6 +1677,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         for arg in args.iter() {
                             arg_typs.push(mid_ty_to_vir(
                                 tcx,
+                                collected_ownership_hints,
                                 &bctx.ctxt.verus_items,
                                 bctx.fun_id,
                                 arg.span,
@@ -1596,6 +1694,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         // Also, allow &mut refs here since that can happen for FnMut.
                         let fun_typ = mid_ty_to_vir(
                             tcx,
+                            collected_ownership_hints,
                             &bctx.ctxt.verus_items,
                             bctx.fun_id,
                             fun.span,
@@ -1681,17 +1780,21 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
         }
         ExprKind::Tup(exprs) => {
-            let args: Result<Vec<vir::ast::Expr>, VirErr> =
-                exprs.iter().map(|e| expr_to_vir(bctx, e, modifier)).collect();
-            mk_expr(mk_tuple_x(&Arc::new(args?)))
+            let args: Result<Vec<vir::ast::Expr>, VirErr> = exprs
+                .iter()
+                .map(|e| expr_to_vir(bctx, collected_ownership_hints, e, modifier))
+                .collect();
+            mk_expr(mk_tuple_x(&Arc::new(args?)), collected_ownership_hints)
         }
         ExprKind::Array(exprs) => {
             if bctx.ctxt.no_vstd {
                 return err_span(expr.span, "Array literals are not supported with --no-vstd");
             }
-            let args: Result<Vec<vir::ast::Expr>, VirErr> =
-                exprs.iter().map(|e| expr_to_vir(bctx, e, modifier)).collect();
-            mk_expr(ExprX::ArrayLiteral(Arc::new(args?)))
+            let args: Result<Vec<vir::ast::Expr>, VirErr> = exprs
+                .iter()
+                .map(|e| expr_to_vir(bctx, collected_ownership_hints, e, modifier))
+                .collect();
+            mk_expr(ExprX::ArrayLiteral(Arc::new(args?)), collected_ownership_hints)
         }
         ExprKind::Repeat(e, _array_len) => {
             if bctx.ctxt.no_vstd {
@@ -1701,10 +1804,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let is_copy =
                 tcx.type_is_copy_modulo_regions(TypingEnv::post_analysis(tcx, bctx.fun_id), ty);
             if is_copy {
-                let arg_vir = expr_to_vir(bctx, e, modifier)?;
+                let arg_vir = expr_to_vir(bctx, collected_ownership_hints, e, modifier)?;
                 let fun = vir::fun!("vstd" => "array", "array_fill_for_copy_types");
                 let array_vir_typ = mid_ty_to_vir(
                     bctx.ctxt.tcx,
+                    collected_ownership_hints,
                     &bctx.ctxt.verus_items,
                     bctx.fun_id,
                     expr.span,
@@ -1727,7 +1831,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     autospec_usage,
                 );
                 let args = Arc::new(vec![arg_vir.clone()]);
-                mk_expr(ExprX::Call(call_target, args))
+                mk_expr(ExprX::Call(call_target, args), collected_ownership_hints)
             } else {
                 // Could be a const. In this case the array needs to be translated like:
                 //    forall |i| array[i] satisfies post-condition of const
@@ -1737,43 +1841,60 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Lit(lit) => match lit.node {
             LitKind::Bool(b) => {
                 let c = vir::ast::Constant::Bool(b);
-                mk_expr(ExprX::Const(c))
+                mk_expr(ExprX::Const(c), collected_ownership_hints)
             }
-            LitKind::Int(i, _) => {
-                mk_lit_int(false, i.get(), typ_of_node(bctx, expr.span, &expr.hir_id, false)?)
-            }
+            LitKind::Int(i, _) => mk_lit_int(
+                false,
+                i.get(),
+                typ_of_node(bctx, collected_ownership_hints, expr.span, &expr.hir_id, false)?,
+                collected_ownership_hints,
+            ),
             LitKind::Char(c) => {
                 let c = vir::ast::Constant::Char(c);
-                mk_expr(ExprX::Const(c))
+                mk_expr(ExprX::Const(c), collected_ownership_hints)
             }
             LitKind::Str(s, _str_style) => {
                 let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
-                mk_expr(ExprX::Const(c))
+                mk_expr(ExprX::Const(c), collected_ownership_hints)
             }
             _ => {
                 return err_span(expr.span, "Unsupported constant type");
             }
         },
         ExprKind::Cast(source, _) => {
-            let source_vir = expr_to_vir(bctx, source, modifier)?;
+            let source_vir = expr_to_vir(bctx, collected_ownership_hints, source, modifier)?;
 
-            if let Some(expr) = maybe_do_ptr_cast(bctx, expr, source, &source_vir)? {
+            if let Some(expr) =
+                maybe_do_ptr_cast(bctx, collected_ownership_hints, expr, source, &source_vir)?
+            {
                 return Ok(expr);
             }
 
             let source_vir_ty = &source_vir.typ;
-            let to_vir_ty = expr_typ()?;
+            let to_vir_ty = expr_typ(collected_ownership_hints)?;
             match (&*undecorate_typ(source_vir_ty), &*undecorate_typ(&to_vir_ty)) {
                 (TypX::Int(_), TypX::Int(_)) => {
                     Ok(mk_ty_clip(&to_vir_ty, &source_vir, expr_vattrs.truncate))
                 }
                 (TypX::Bool, TypX::Int(_)) => {
-                    let zero = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(0)))?;
-                    let one = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(1)))?;
-                    mk_expr(ExprX::If(source_vir, one, Some(zero)))
+                    let zero = mk_expr(
+                        ExprX::Const(vir::ast_util::const_int_from_u128(0)),
+                        collected_ownership_hints,
+                    )?;
+                    let one = mk_expr(
+                        ExprX::Const(vir::ast_util::const_int_from_u128(1)),
+                        collected_ownership_hints,
+                    )?;
+                    mk_expr(ExprX::If(source_vir, one, Some(zero)), collected_ownership_hints)
                 }
                 (_, TypX::Int(_)) if bctx.types.node_type(source.hir_id).is_enum() => {
-                    let cast_to = expr_cast_enum_int_to_vir(bctx, source, source_vir, mk_expr)?;
+                    let cast_to = expr_cast_enum_int_to_vir(
+                        bctx,
+                        collected_ownership_hints,
+                        source,
+                        source_vir,
+                        mk_expr,
+                    )?;
                     Ok(mk_ty_clip(&to_vir_ty, &cast_to, expr_vattrs.truncate))
                 }
                 _ => {
@@ -1790,7 +1911,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Not, e) => {
-            let mut new_expr = expr_to_vir_inner(bctx, e, ExprModifier::REGULAR)?;
+            let mut new_expr =
+                expr_to_vir_inner(bctx, collected_ownership_hints, e, ExprModifier::REGULAR)?;
             let typ = &mut Arc::make_mut(&mut new_expr).typ;
             *typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, None, typ.clone()));
             Ok(new_expr)
@@ -1800,7 +1922,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 // * &mut cancels out
                 let mut new_modifier = current_modifier;
                 new_modifier.deref_mut = false;
-                expr_to_vir_inner(bctx, e, new_modifier)
+                expr_to_vir_inner(bctx, collected_ownership_hints, e, new_modifier)
             } else {
                 unsupported_err!(expr.span, format!("&mut dereference in this position"))
             }
@@ -1835,25 +1957,34 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         )
                     }
                 };
-                let varg = expr_to_vir(bctx, arg, modifier)?;
-                mk_expr(ExprX::Unary(not_op, varg))
+                let varg = expr_to_vir(bctx, collected_ownership_hints, arg, modifier)?;
+                mk_expr(ExprX::Unary(not_op, varg), collected_ownership_hints)
             }
             UnOp::Neg => {
                 let zero_const = vir::ast_util::const_int_from_u128(0);
-                let zero = mk_expr(ExprX::Const(zero_const))?;
-                let varg = if let ExprKind::Lit(Spanned { node: LitKind::Int(i, _), .. }) =
-                    &arg.kind
-                {
-                    mk_lit_int(true, i.get(), typ_of_node(bctx, expr.span, &expr.hir_id, false)?)?
-                } else {
-                    expr_to_vir(bctx, arg, modifier)?
-                };
+                let zero = mk_expr(ExprX::Const(zero_const), collected_ownership_hints)?;
+                let varg =
+                    if let ExprKind::Lit(Spanned { node: LitKind::Int(i, _), .. }) = &arg.kind {
+                        mk_lit_int(
+                            true,
+                            i.get(),
+                            typ_of_node(
+                                bctx,
+                                collected_ownership_hints,
+                                expr.span,
+                                &expr.hir_id,
+                                false,
+                            )?,
+                            collected_ownership_hints,
+                        )?
+                    } else {
+                        expr_to_vir(bctx, collected_ownership_hints, arg, modifier)?
+                    };
                 let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
-                mk_expr(ExprX::Binary(
-                    BinaryOp::Arith(ArithOp::Sub, mode_for_ghostness),
-                    zero,
-                    varg,
-                ))
+                mk_expr(
+                    ExprX::Binary(BinaryOp::Arith(ArithOp::Sub, mode_for_ghostness), zero, varg),
+                    collected_ownership_hints,
+                )
             }
             UnOp::Deref => {
                 let inner_ty = bctx.types.expr_ty_adjusted(arg);
@@ -1882,7 +2013,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 }
 
                 let modifier = is_expr_typ_mut_ref(inner_ty, modifier)?;
-                let mut new_expr = expr_to_vir_inner(bctx, arg, modifier)?;
+                let mut new_expr =
+                    expr_to_vir_inner(bctx, collected_ownership_hints, arg, modifier)?;
                 let typ = &mut Arc::make_mut(&mut new_expr).typ;
                 if let TypX::Decorate(
                     vir::ast::TypDecoration::MutRef
@@ -1900,11 +2032,17 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
         },
         ExprKind::Binary(op, lhs, rhs) => {
-            let vlhs = expr_to_vir(bctx, lhs, modifier)?;
-            let vrhs = expr_to_vir(bctx, rhs, modifier)?;
+            let vlhs = expr_to_vir(bctx, collected_ownership_hints, lhs, modifier)?;
+            let vrhs = expr_to_vir(bctx, collected_ownership_hints, rhs, modifier)?;
             match op.node {
                 BinOpKind::Eq | BinOpKind::Ne => unsupported_err_unless!(
-                    is_smt_equality(bctx, expr.span, &lhs.hir_id, &rhs.hir_id)?,
+                    is_smt_equality(
+                        bctx,
+                        collected_ownership_hints,
+                        expr.span,
+                        &lhs.hir_id,
+                        &rhs.hir_id
+                    )?,
                     expr.span,
                     "==/!= for non smt equality types"
                 ),
@@ -1915,7 +2053,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 | BinOpKind::Ge
                 | BinOpKind::Lt
                 | BinOpKind::Gt => unsupported_err_unless!(
-                    is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)?,
+                    is_smt_arith(
+                        bctx,
+                        collected_ownership_hints,
+                        lhs.span,
+                        rhs.span,
+                        &lhs.hir_id,
+                        &rhs.hir_id
+                    )?,
                     expr.span,
                     "cmp or arithmetic for non smt arithmetic types",
                     expr
@@ -1924,16 +2069,16 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
             let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
             let vop = binopkind_to_binaryop(bctx, op, tc, lhs, rhs, mode_for_ghostness)?;
-            let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs))?;
+            let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs), collected_ownership_hints)?;
             match op.node {
                 BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => {
-                    Ok(mk_ty_clip(&expr_typ()?, &e, true))
+                    Ok(mk_ty_clip(&expr_typ(collected_ownership_hints)?, &e, true))
                 }
                 BinOpKind::Div | BinOpKind::Rem => {
                     match mk_range(&bctx.ctxt.verus_items, &tc.node_type(expr.hir_id)) {
                         IntRange::Int | IntRange::Nat | IntRange::U(_) | IntRange::USize => {
                             // Euclidean division
-                            Ok(mk_ty_clip(&expr_typ()?, &e, true))
+                            Ok(mk_ty_clip(&expr_typ(collected_ownership_hints)?, &e, true))
                         }
                         IntRange::I(_) | IntRange::ISize => {
                             // Non-Euclidean division, which will need more encoding
@@ -1951,17 +2096,21 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let res = bctx.types.qpath_res(&qpath, expr.hir_id);
             match res {
                 Res::Local(id) => match tcx.hir_node(id) {
-                    Node::Pat(pat) => mk_expr(if modifier.addr_of_mut {
-                        ExprX::VarLoc(pat_to_var(pat)?)
-                    } else {
-                        ExprX::Var(pat_to_var(pat)?)
-                    }),
+                    Node::Pat(pat) => mk_expr(
+                        if modifier.addr_of_mut {
+                            ExprX::VarLoc(pat_to_var(pat)?)
+                        } else {
+                            ExprX::Var(pat_to_var(pat)?)
+                        },
+                        collected_ownership_hints,
+                    ),
                     node => unsupported_err!(expr.span, format!("Path {:?}", node)),
                 },
                 Res::SelfCtor(_)
                 | Res::Def(DefKind::Ctor(CtorOf::Struct | CtorOf::Variant, CtorKind::Const), _) => {
                     expr_tuple_datatype_ctor_to_vir(
                         bctx,
+                        collected_ownership_hints,
                         expr,
                         &res,
                         &[],
@@ -1974,9 +2123,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     unsupported_err!(expr.span, "using a datatype constructor as a function value");
                 }
                 Res::Def(DefKind::AssocConst, id) => {
-                    if let Some(vir_expr) =
-                        int_intrinsic_constant_to_vir(&bctx.ctxt, expr.span, &expr_typ()?, id)
-                    {
+                    if let Some(vir_expr) = int_intrinsic_constant_to_vir(
+                        &bctx.ctxt,
+                        expr.span,
+                        &expr_typ(collected_ownership_hints)?,
+                        id,
+                    ) {
                         let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                         erasure_info.resolved_calls.push((
                             expr.hir_id,
@@ -1992,7 +2144,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         } else {
                             AutospecUsage::Final
                         };
-                        mk_expr(ExprX::ConstVar(Arc::new(fun), autospec_usage))
+                        mk_expr(
+                            ExprX::ConstVar(Arc::new(fun), autospec_usage),
+                            collected_ownership_hints,
+                        )
                     }
                 }
                 Res::Def(DefKind::Const, id) => {
@@ -2000,7 +2155,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let fun = FunX { path };
                     let autospec_usage =
                         if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
-                    mk_expr(ExprX::ConstVar(Arc::new(fun), autospec_usage))
+                    mk_expr(
+                        ExprX::ConstVar(Arc::new(fun), autospec_usage),
+                        collected_ownership_hints,
+                    )
                 }
                 Res::Def(
                     DefKind::Static { mutability: Mutability::Not, nested: false, .. },
@@ -2008,12 +2166,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 ) => {
                     let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
                     let fun = FunX { path };
-                    mk_expr(ExprX::StaticVar(Arc::new(fun)))
+                    mk_expr(ExprX::StaticVar(Arc::new(fun)), collected_ownership_hints)
                 }
                 Res::Def(DefKind::Fn, id) | Res::Def(DefKind::AssocFn, id) => {
                     let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
                     let fun = Arc::new(vir::ast::FunX { path });
-                    mk_expr(ExprX::ExecFnByName(fun))
+                    mk_expr(ExprX::ExecFnByName(fun), collected_ownership_hints)
                 }
                 Res::Def(DefKind::ConstParam, id) => {
                     let gparam = if let Some(local_id) = id.as_local() {
@@ -2029,7 +2187,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     } else {
                         None
                     };
-                    match *undecorate_typ(&expr_typ()?) {
+                    match *undecorate_typ(&expr_typ(collected_ownership_hints)?) {
                         TypX::Int(_) => {}
                         TypX::Bool => {}
                         _ => {
@@ -2039,7 +2197,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     if let Some(name) = gparam {
                         let typ = Arc::new(TypX::TypParam(Arc::new(name.ident().to_string())));
                         let opr = vir::ast::NullaryOpr::ConstGeneric(typ);
-                        mk_expr(ExprX::NullaryOpr(opr))
+                        mk_expr(ExprX::NullaryOpr(opr), collected_ownership_hints)
                     } else {
                         unsupported_err!(expr.span, format!("ConstParam {:?}", id))
                     }
@@ -2047,12 +2205,19 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 res => unsupported_err!(expr.span, format!("Path {:?}", res)),
             }
         }
-        ExprKind::Assign(lhs, rhs, _) => {
-            expr_assign_to_vir_innermost(bctx, tc, lhs, mk_expr, rhs, modifier, None)
-        }
+        ExprKind::Assign(lhs, rhs, _) => expr_assign_to_vir_innermost(
+            bctx,
+            collected_ownership_hints,
+            tc,
+            lhs,
+            mk_expr,
+            rhs,
+            modifier,
+            None,
+        ),
         ExprKind::Field(lhs, name) => {
             let lhs_modifier = is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(lhs), modifier)?;
-            let vir_lhs = expr_to_vir(bctx, lhs, lhs_modifier)?;
+            let vir_lhs = expr_to_vir(bctx, collected_ownership_hints, lhs, lhs_modifier)?;
             let lhs_ty = tc.expr_ty_adjusted(lhs);
             let lhs_ty = mid_ty_simplify(tcx, &bctx.ctxt.verus_items, &lhs_ty, true);
             let (datatype, variant_name, field_name, check) = if let Some(adt_def) =
@@ -2087,19 +2252,23 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let check = if adt_def.is_union() { VariantCheck::Yes } else { VariantCheck::None };
                 (datatype_path, variant_name, field_name, check)
             } else {
-                let lhs_typ = typ_of_node(bctx, lhs.span, &lhs.hir_id, true)?;
+                let lhs_typ =
+                    typ_of_node(bctx, collected_ownership_hints, lhs.span, &lhs.hir_id, true)?;
                 let lhs_typ = undecorate_typ(&lhs_typ);
                 if let TypX::Datatype(Dt::Tuple(_), ts, _) = &*lhs_typ {
                     let field: usize =
                         str::parse(&name.as_str()).expect("integer index into tuple");
-                    let vir = mk_expr(mk_tuple_field_x(&vir_lhs, ts.len(), field))?;
+                    let vir = mk_expr(
+                        mk_tuple_field_x(&vir_lhs, ts.len(), field),
+                        collected_ownership_hints,
+                    )?;
                     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                     erasure_info.resolved_exprs.push((expr.span.data(), vir.clone()));
                     return Ok(vir);
                 }
                 unsupported_err!(expr.span, "field_of_non_adt", expr)
             };
-            let field_type = expr_typ()?.clone();
+            let field_type = expr_typ(collected_ownership_hints)?.clone();
             let vir = bctx.spanned_typed_new(
                 expr.span,
                 &field_type,
@@ -2123,62 +2292,85 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             match cond.kind {
                 ExprKind::Let(LetExpr { pat, init: expr, ty: _, span: _, recovered: _ }) => {
                     // if let
-                    let vir_expr = expr_to_vir(bctx, expr, modifier)?;
+                    let vir_expr = expr_to_vir(bctx, collected_ownership_hints, expr, modifier)?;
                     let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
                     /* lhs */
                     {
-                        let pattern = pattern_to_vir(bctx, pat)?;
-                        let guard = mk_expr(ExprX::Const(Constant::Bool(true)))?;
-                        let body = expr_to_vir(bctx, &lhs, modifier)?;
+                        let pattern = pattern_to_vir(bctx, collected_ownership_hints, pat)?;
+                        let guard =
+                            mk_expr(ExprX::Const(Constant::Bool(true)), collected_ownership_hints)?;
+                        let body = expr_to_vir(bctx, collected_ownership_hints, &lhs, modifier)?;
                         let vir_arm = ArmX { pattern, guard, body };
                         vir_arms.push(bctx.spanned_new(lhs.span, vir_arm));
                     }
                     /* rhs */
                     {
-                        let pat_typ = typ_of_node(bctx, pat.span, &pat.hir_id, false)?;
+                        let pat_typ = typ_of_node(
+                            bctx,
+                            collected_ownership_hints,
+                            pat.span,
+                            &pat.hir_id,
+                            false,
+                        )?;
                         let pattern =
                             bctx.spanned_typed_new(cond.span, &pat_typ, PatternX::Wildcard(false));
                         {
                             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                             erasure_info.hir_vir_ids.push((cond.hir_id, pattern.span.id));
                         }
-                        let guard = mk_expr(ExprX::Const(Constant::Bool(true)))?;
+                        let guard =
+                            mk_expr(ExprX::Const(Constant::Bool(true)), collected_ownership_hints)?;
                         let body = if let Some(rhs) = rhs {
-                            expr_to_vir(bctx, &rhs, modifier)?
+                            expr_to_vir(bctx, collected_ownership_hints, &rhs, modifier)?
                         } else {
-                            mk_expr(ExprX::Block(Arc::new(Vec::new()), None))?
+                            mk_expr(
+                                ExprX::Block(Arc::new(Vec::new()), None),
+                                collected_ownership_hints,
+                            )?
                         };
                         let vir_arm = ArmX { pattern, guard, body };
                         vir_arms.push(bctx.spanned_new(lhs.span, vir_arm));
                     }
-                    mk_expr(ExprX::Match(vir_expr, Arc::new(vir_arms)))
+                    mk_expr(ExprX::Match(vir_expr, Arc::new(vir_arms)), collected_ownership_hints)
                 }
                 _ => {
-                    let vir_cond = expr_to_vir(bctx, cond, modifier)?;
-                    let vir_lhs = expr_to_vir(bctx, lhs, modifier)?;
-                    let vir_rhs = rhs.map(|e| expr_to_vir(bctx, e, modifier)).transpose()?;
-                    mk_expr(ExprX::If(vir_cond, vir_lhs, vir_rhs))
+                    let vir_cond = expr_to_vir(bctx, collected_ownership_hints, cond, modifier)?;
+                    let vir_lhs = expr_to_vir(bctx, collected_ownership_hints, lhs, modifier)?;
+                    let vir_rhs = rhs
+                        .map(|e| expr_to_vir(bctx, collected_ownership_hints, e, modifier))
+                        .transpose()?;
+                    mk_expr(ExprX::If(vir_cond, vir_lhs, vir_rhs), collected_ownership_hints)
                 }
             }
         }
         ExprKind::Match(expr, arms, _match_source) => {
-            let vir_expr = expr_to_vir(bctx, expr, modifier)?;
+            let vir_expr = expr_to_vir(bctx, collected_ownership_hints, expr, modifier)?;
             let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
             for arm in arms.iter() {
-                let pattern = pattern_to_vir(bctx, &arm.pat)?;
+                let pattern = pattern_to_vir(bctx, collected_ownership_hints, &arm.pat)?;
                 let guard = match &arm.guard {
-                    None => mk_expr(ExprX::Const(Constant::Bool(true)))?,
-                    Some(guard_expr) => expr_to_vir(bctx, guard_expr, modifier)?,
+                    None => mk_expr(ExprX::Const(Constant::Bool(true)), collected_ownership_hints)?,
+                    Some(guard_expr) => {
+                        expr_to_vir(bctx, collected_ownership_hints, guard_expr, modifier)?
+                    }
                 };
-                let body = expr_to_vir(bctx, &arm.body, modifier)?;
+                let body = expr_to_vir(bctx, collected_ownership_hints, &arm.body, modifier)?;
                 let vir_arm = ArmX { pattern, guard, body };
                 vir_arms.push(bctx.spanned_new(arm.span, vir_arm));
             }
-            mk_expr(ExprX::Match(vir_expr, Arc::new(vir_arms)))
+            mk_expr(ExprX::Match(vir_expr, Arc::new(vir_arms)), collected_ownership_hints)
         }
         ExprKind::Loop(block, label, LoopSource::Loop, header_span) => {
-            let typ = typ_of_node(bctx, block.span, &block.hir_id, false)?;
-            let mut body = block_to_vir(bctx, block, &expr.span, &typ, ExprModifier::REGULAR)?;
+            let typ =
+                typ_of_node(bctx, collected_ownership_hints, block.span, &block.hir_id, false)?;
+            let mut body = block_to_vir(
+                bctx,
+                collected_ownership_hints,
+                block,
+                &expr.span,
+                &typ,
+                ExprModifier::REGULAR,
+            )?;
             let header = vir::headers::read_header(&mut body)?;
             let label = label.map(|l| l.ident.to_string());
             use crate::attributes::get_allow_exec_allows_no_decreases_clause_walk_parents;
@@ -2191,7 +2383,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             };
             Ok(bctx.spanned_typed_new(
                 *header_span,
-                &expr_typ()?,
+                &expr_typ(collected_ownership_hints)?,
                 ExprX::Loop {
                     loop_isolation: loop_isolation(),
                     is_for_loop: expr_vattrs.for_loop,
@@ -2248,13 +2440,15 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 unsupported_err!(expr.span, "loop else");
             }
             assert!(modifier == ExprModifier::REGULAR);
-            let cond = Some(expr_to_vir(bctx, cond, ExprModifier::REGULAR)?);
-            let mut body = expr_to_vir(bctx, body, ExprModifier::REGULAR)?;
+            let cond =
+                Some(expr_to_vir(bctx, collected_ownership_hints, cond, ExprModifier::REGULAR)?);
+            let mut body =
+                expr_to_vir(bctx, collected_ownership_hints, body, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut body)?;
             let label = label.map(|l| l.ident.to_string());
             Ok(bctx.spanned_typed_new(
                 *header_span,
-                &expr_typ()?,
+                &expr_typ(collected_ownership_hints)?,
                 ExprX::Loop {
                     loop_isolation: loop_isolation(),
                     is_for_loop: false,
@@ -2269,22 +2463,24 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Ret(expr) => {
             let expr = match expr {
                 None => None,
-                Some(expr) => Some(expr_to_vir(bctx, expr, modifier)?),
+                Some(expr) => Some(expr_to_vir(bctx, collected_ownership_hints, expr, modifier)?),
             };
-            mk_expr(ExprX::Return(expr))
+            mk_expr(ExprX::Return(expr), collected_ownership_hints)
         }
         ExprKind::Break(dest, None) => {
             let label = dest.label.map(|l| l.ident.to_string());
-            mk_expr(ExprX::BreakOrContinue { label, is_break: true })
+            mk_expr(ExprX::BreakOrContinue { label, is_break: true }, collected_ownership_hints)
         }
         ExprKind::Continue(dest) => {
             let label = dest.label.map(|l| l.ident.to_string());
-            mk_expr(ExprX::BreakOrContinue { label, is_break: false })
+            mk_expr(ExprX::BreakOrContinue { label, is_break: false }, collected_ownership_hints)
         }
         ExprKind::Struct(qpath, fields, struct_tail) => {
             let update = match struct_tail {
                 // Some(update) => Some(expr_to_vir(bctx, update, modifier)?),
-                StructTailExpr::Base(expr) => Some(expr_to_vir(bctx, expr, modifier)?),
+                StructTailExpr::Base(expr) => {
+                    Some(expr_to_vir(bctx, collected_ownership_hints, expr, modifier)?)
+                }
                 StructTailExpr::DefaultFields(..) => {
                     unsupported_err!(
                         expr.span,
@@ -2303,7 +2499,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 fields
                     .iter()
                     .map(|f| -> Result<_, VirErr> {
-                        let vir = expr_to_vir(bctx, f.expr, modifier)?;
+                        let vir = expr_to_vir(bctx, collected_ownership_hints, f.expr, modifier)?;
                         let ident = field_ident_from_rust(f.ident.as_str());
                         Ok(ident_binder(&ident, &vir))
                     })
@@ -2312,7 +2508,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
             let resolved_call = ResolvedCall::Ctor(path.clone(), variant_name.clone());
             erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
-            mk_expr(ExprX::Ctor(Dt::Path(path), variant_name, vir_fields, update))
+            mk_expr(
+                ExprX::Ctor(Dt::Path(path), variant_name, vir_fields, update),
+                collected_ownership_hints,
+            )
         }
         ExprKind::MethodCall(_name_and_generics, receiver, other_args, fn_span) => {
             let fn_def_id = bctx
@@ -2323,6 +2522,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let all_args = std::iter::once(*receiver).chain(other_args.iter()).collect::<Vec<_>>();
             fn_call_to_vir(
                 bctx,
+                collected_ownership_hints,
                 expr,
                 fn_def_id,
                 bctx.types.node_args(expr.hir_id),
@@ -2335,9 +2535,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Closure(Closure { fn_decl: _, body: body_id, .. }) => {
             if expr_vattrs.internal_const_header_wrapper {
                 let closure_body = find_body(&bctx.ctxt, body_id);
-                expr_to_vir(bctx, closure_body.value, modifier)
+                expr_to_vir(bctx, collected_ownership_hints, closure_body.value, modifier)
             } else {
-                closure_to_vir(bctx, expr, expr_typ()?, false, None, modifier)
+                let t = expr_typ(collected_ownership_hints)?;
+                closure_to_vir(bctx, collected_ownership_hints, expr, t, false, None, modifier)
             }
         }
         ExprKind::Index(tgt_expr, idx_expr, _span) => {
@@ -2358,8 +2559,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 unsupported_err!(expr.span, "index for &mut not supported")
             }
 
-            let tgt_vir = expr_to_vir(bctx, tgt_expr, modifier)?;
-            let idx_vir = expr_to_vir(bctx, idx_expr, ExprModifier::REGULAR)?;
+            let tgt_vir = expr_to_vir(bctx, collected_ownership_hints, tgt_expr, modifier)?;
+            let idx_vir =
+                expr_to_vir(bctx, collected_ownership_hints, idx_expr, ExprModifier::REGULAR)?;
 
             // We only support for the special case of (Vec, usize) arguments
             let t1 = &tgt_vir.typ;
@@ -2410,7 +2612,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 AutospecUsage::Final,
             );
             let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);
-            mk_expr(ExprX::Call(call_target, args))
+            mk_expr(ExprX::Call(call_target, args), collected_ownership_hints)
         }
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
         ExprKind::Break(..) => unsupported_err!(expr.span, format!("complex break expressions")),
@@ -2422,7 +2624,16 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     unsupported_err!(expr.span, "div/mod on signed finite-width integers");
                 }
             }
-            expr_assign_to_vir_innermost(bctx, tc, lhs, mk_expr, rhs, modifier, Some(op))
+            expr_assign_to_vir_innermost(
+                bctx,
+                collected_ownership_hints,
+                tc,
+                lhs,
+                mk_expr,
+                rhs,
+                modifier,
+                Some(op),
+            )
         }
         ExprKind::ConstBlock(..) => unsupported_err!(expr.span, format!("const block expressions")),
         ExprKind::Type(..) => unsupported_err!(expr.span, format!("type expressions")),
@@ -2528,14 +2739,22 @@ fn binopkind_to_binaryop<'tcx>(
 
 fn expr_assign_to_vir_innermost<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     tc: &rustc_middle::ty::TypeckResults,
     lhs: &Expr<'tcx>,
-    mk_expr: impl Fn(ExprX) -> Result<vir::ast::Expr, vir::messages::Message>,
+    mk_expr: impl Fn(
+        ExprX,
+        &mut vir::ast::OwnershipHintsX,
+    ) -> Result<vir::ast::Expr, vir::messages::Message>,
     rhs: &Expr<'tcx>,
     modifier: ExprModifier,
     op_kind: Option<&Spanned<BinOpKind>>,
 ) -> Result<vir::ast::Expr, vir::messages::Message> {
-    fn init_not_mut(bctx: &BodyCtxt, lhs: &Expr) -> Result<bool, VirErr> {
+    fn init_not_mut(
+        bctx: &BodyCtxt,
+        collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
+        lhs: &Expr,
+    ) -> Result<bool, VirErr> {
         Ok(match lhs.kind {
             ExprKind::Path(QPath::Resolved(None, rustc_hir::Path { res: Res::Local(id), .. })) => {
                 let not_mut = if let Node::Pat(pat) = bctx.ctxt.tcx.hir_node(*id) {
@@ -2559,6 +2778,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
             ExprKind::Field(lhs, _) => {
                 let deref_ghost = mid_ty_to_vir_ghost(
                     bctx.ctxt.tcx,
+                    collected_ownership_hints,
                     &bctx.ctxt.verus_items,
                     bctx.fun_id,
                     lhs.span,
@@ -2567,7 +2787,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
                 )?
                 .1;
                 unsupported_err_unless!(!deref_ghost, lhs.span, "assignment through Ghost/Tracked");
-                init_not_mut(bctx, lhs)?
+                init_not_mut(bctx, collected_ownership_hints, lhs)?
             }
             ExprKind::MethodCall(_, receiver, _, span) => {
                 let fn_def_id = bctx
@@ -2579,7 +2799,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
                     verus_item,
                     Some(VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut))
                 ) {
-                    let nm = init_not_mut(bctx, &receiver)?;
+                    let nm = init_not_mut(bctx, collected_ownership_hints, &receiver)?;
                     unsupported_err_unless!(!nm, span, "this call for delayed initialization");
                     nm
                 } else {
@@ -2605,10 +2825,11 @@ fn expr_assign_to_vir_innermost<'tcx>(
         }
         let tgt_modifier =
             is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(&tgt_expr), ExprModifier::ADDR_OF_MUT)?;
-        let tgt_vir = expr_to_vir(bctx, tgt_expr, tgt_modifier)?;
-        let idx_vir = expr_to_vir(bctx, idx_expr, ExprModifier::REGULAR)?;
+        let tgt_vir = expr_to_vir(bctx, collected_ownership_hints, tgt_expr, tgt_modifier)?;
+        let idx_vir =
+            expr_to_vir(bctx, collected_ownership_hints, idx_expr, ExprModifier::REGULAR)?;
 
-        let mut rhs_vir = expr_to_vir(bctx, rhs, modifier)?;
+        let mut rhs_vir = expr_to_vir(bctx, collected_ownership_hints, rhs, modifier)?;
         let fun = vir::fun!["vstd" => "std_specs", "core", "index_set"];
         let typ_args = Some(Arc::new(vec![
             undecorate_typ(&tgt_vir.typ),
@@ -2633,12 +2854,19 @@ fn expr_assign_to_vir_innermost<'tcx>(
                 lhs
             );
             unsupported_err_unless!(
-                is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)?,
+                is_smt_arith(
+                    bctx,
+                    collected_ownership_hints,
+                    lhs.span,
+                    rhs.span,
+                    &lhs.hir_id,
+                    &rhs.hir_id
+                )?,
                 lhs.span,
                 "assign op to index_mut for non smt arithmetic types",
                 lhs
             );
-            let lhs_vir = expr_to_vir(bctx, lhs, ExprModifier::REGULAR)?;
+            let lhs_vir = expr_to_vir(bctx, collected_ownership_hints, lhs, ExprModifier::REGULAR)?;
             let rhs_ty = &rhs_vir.typ.clone();
             rhs_vir =
                 bctx.spanned_typed_new(rhs.span, &rhs_ty, ExprX::Binary(op, lhs_vir, rhs_vir));
@@ -2655,17 +2883,21 @@ fn expr_assign_to_vir_innermost<'tcx>(
         erasure_info.direct_var_modes.push((lhs.hir_id, Mode::Exec));
         return Ok(index_set);
     }
-    let init_not_mut = init_not_mut(bctx, lhs)?;
-    mk_expr(ExprX::Assign {
-        init_not_mut,
-        lhs: expr_to_vir(bctx, lhs, ExprModifier::ADDR_OF_MUT)?,
-        rhs: expr_to_vir(bctx, rhs, modifier)?,
-        op: op,
-    })
+    let init_not_mut = init_not_mut(bctx, collected_ownership_hints, lhs)?;
+    mk_expr(
+        ExprX::Assign {
+            init_not_mut,
+            lhs: expr_to_vir(bctx, collected_ownership_hints, lhs, ExprModifier::ADDR_OF_MUT)?,
+            rhs: expr_to_vir(bctx, collected_ownership_hints, rhs, modifier)?,
+            op: op,
+        },
+        collected_ownership_hints,
+    )
 }
 
 pub(crate) fn let_stmt_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     pattern: &rustc_hir::Pat<'tcx>,
     initializer: &Option<&Expr<'tcx>>,
     els: &Option<&Block<'tcx>>,
@@ -2678,14 +2910,24 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
             unsupported_err!(els.span, "let-else in spec/proof", els);
         }
         let init = initializer.unwrap();
-        let init_type = typ_of_node(bctx, els.span, &init.hir_id, false)?;
-        let els_typ = typ_of_node(bctx, els.span, &els.hir_id, false)?;
-        let els_block = block_to_vir(bctx, els, &els.span, &els_typ, ExprModifier::REGULAR)?;
+        let init_type =
+            typ_of_node(bctx, collected_ownership_hints, els.span, &init.hir_id, false)?;
+        let els_typ = typ_of_node(bctx, collected_ownership_hints, els.span, &els.hir_id, false)?;
+        let els_block = block_to_vir(
+            bctx,
+            collected_ownership_hints,
+            els,
+            &els.span,
+            &els_typ,
+            ExprModifier::REGULAR,
+        )?;
         Some(bctx.spanned_typed_new(els.span, &init_type, ExprX::NeverToAny(els_block)))
     } else {
         None
     };
-    let init = initializer.map(|e| expr_to_vir(bctx, e, ExprModifier::REGULAR)).transpose()?;
+    let init = initializer
+        .map(|e| expr_to_vir(bctx, collected_ownership_hints, e, ExprModifier::REGULAR))
+        .transpose()?;
 
     if parse_attrs_opt(attrs, Some(&mut *bctx.ctxt.diagnostics.borrow_mut()))
         .contains(&Attr::UnwrappedBinding)
@@ -2713,7 +2955,7 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
         }
     }
 
-    let vir_pattern = pattern_to_vir(bctx, pattern)?;
+    let vir_pattern = pattern_to_vir(bctx, collected_ownership_hints, pattern)?;
     let mode = if infer_mode { None } else { Some(mode) };
     Ok(vec![bctx.spanned_new(pattern.span, StmtX::Decl { pattern: vir_pattern, mode, init, els })])
 }
@@ -2823,6 +3065,7 @@ fn unwrap_parameter_to_vir<'tcx>(
 
 pub(crate) fn stmt_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     stmt: &Stmt<'tcx>,
 ) -> Result<Vec<vir::ast::Stmt>, VirErr> {
     if bctx.external_body {
@@ -2835,7 +3078,8 @@ pub(crate) fn stmt_to_vir<'tcx>(
 
     match &stmt.kind {
         StmtKind::Expr(expr) | StmtKind::Semi(expr) => {
-            let vir_expr = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
+            let vir_expr =
+                expr_to_vir(bctx, collected_ownership_hints, expr, ExprModifier::REGULAR)?;
             Ok(vec![bctx.spanned_new(expr.span, StmtX::Expr(vir_expr))])
         }
         StmtKind::Item(item_id) => {
@@ -2879,13 +3123,21 @@ pub(crate) fn stmt_to_vir<'tcx>(
             }
         }
         StmtKind::Let(LetStmt { pat, ty: _, init, els, hir_id: _, span: _, source: _ }) => {
-            let_stmt_to_vir(bctx, pat, init, els, bctx.ctxt.tcx.hir().attrs(stmt.hir_id))
+            let_stmt_to_vir(
+                bctx,
+                collected_ownership_hints,
+                pat,
+                init,
+                els,
+                bctx.ctxt.tcx.hir().attrs(stmt.hir_id),
+            )
         }
     }
 }
 
 pub(crate) fn stmts_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     stmts: &mut impl Iterator<Item = &'tcx Stmt<'tcx>>,
 ) -> Result<Option<Vec<vir::ast::Stmt>>, VirErr> {
     if let Some(stmt) = stmts.next() {
@@ -2898,7 +3150,7 @@ pub(crate) fn stmts_to_vir<'tcx>(
                 return err_span(stmt.span, "ill-formed unwrap_parameter header");
             }
         }
-        Ok(Some(stmt_to_vir(bctx, stmt)?))
+        Ok(Some(stmt_to_vir(bctx, collected_ownership_hints, stmt)?))
     } else {
         Ok(None)
     }
@@ -2906,6 +3158,7 @@ pub(crate) fn stmts_to_vir<'tcx>(
 
 pub(crate) fn closure_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     closure_expr: &Expr<'tcx>,
     closure_vir_typ: Typ,
     is_spec_fn: bool,
@@ -2921,7 +3174,7 @@ pub(crate) fn closure_to_vir<'tcx>(
         );
         let body = bctx.ctxt.tcx.hir().body(*body_id);
 
-        let typs = closure_param_typs(bctx, closure_expr)?;
+        let typs = closure_param_typs(bctx, collected_ownership_hints, closure_expr)?;
         assert!(typs.len() == body.params.len());
         let params: Vec<VarBinder<Typ>> = body
             .params
@@ -2941,7 +3194,7 @@ pub(crate) fn closure_to_vir<'tcx>(
                 Ok(Arc::new(VarBinderX { name, a: t }))
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let mut body = expr_to_vir(bctx, &body.value, modifier)?;
+        let mut body = expr_to_vir(bctx, collected_ownership_hints, &body.value, modifier)?;
 
         let header = vir::headers::read_header(&mut body)?;
         let vir::headers::Header { require, ensure, ensure_id_typ, .. } = header;
@@ -2955,7 +3208,7 @@ pub(crate) fn closure_to_vir<'tcx>(
             }
             ExprX::Closure(Arc::new(params), body)
         } else {
-            let ret_typ = closure_ret_typ(bctx, closure_expr)?;
+            let ret_typ = closure_ret_typ(bctx, collected_ownership_hints, closure_expr)?;
 
             let id = match ensure_id_typ {
                 Some((id, ensures_typ)) => {
@@ -3025,6 +3278,7 @@ enum PtrCastKind {
 
 fn is_ptr_cast<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     span: Span,
     src: rustc_middle::ty::Ty<'tcx>,
     dst: rustc_middle::ty::Ty<'tcx>,
@@ -3039,6 +3293,7 @@ fn is_ptr_cast<'tcx>(
             {
                 let src_ty = mid_ty_to_vir(
                     bctx.ctxt.tcx,
+                    collected_ownership_hints,
                     &bctx.ctxt.verus_items,
                     bctx.fun_id,
                     span,
@@ -3047,6 +3302,7 @@ fn is_ptr_cast<'tcx>(
                 )?;
                 let dst_ty = mid_ty_to_vir(
                     bctx.ctxt.tcx,
+                    collected_ownership_hints,
                     &bctx.ctxt.verus_items,
                     bctx.fun_id,
                     span,
@@ -3068,6 +3324,7 @@ fn is_ptr_cast<'tcx>(
         {
             let src_ty = mid_ty_to_vir(
                 bctx.ctxt.tcx,
+                collected_ownership_hints,
                 &bctx.ctxt.verus_items,
                 bctx.fun_id,
                 span,
@@ -3087,13 +3344,14 @@ fn is_ptr_cast<'tcx>(
 
 pub(crate) fn maybe_do_ptr_cast<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     dst_expr: &Expr,
     src_expr: &Expr,
     src_vir: &vir::ast::Expr,
 ) -> Result<Option<vir::ast::Expr>, VirErr> {
     let source_ty = bctx.types.expr_ty_adjusted(src_expr);
     let to_ty = bctx.types.expr_ty(dst_expr);
-    match is_ptr_cast(bctx, dst_expr.span, source_ty, to_ty)? {
+    match is_ptr_cast(bctx, collected_ownership_hints, dst_expr.span, source_ty, to_ty)? {
         Some(PtrCastKind::Trivial) => {
             return Ok(Some(src_vir.clone()));
         }
@@ -3109,7 +3367,13 @@ pub(crate) fn maybe_do_ptr_cast<'tcx>(
             );
             let args = Arc::new(vec![src_vir.clone()]);
             let x = ExprX::Call(call_target, args);
-            let expr_typ = typ_of_node(bctx, dst_expr.span, &dst_expr.hir_id, false)?;
+            let expr_typ = typ_of_node(
+                bctx,
+                collected_ownership_hints,
+                dst_expr.span,
+                &dst_expr.hir_id,
+                false,
+            )?;
 
             if clip {
                 let expr_attrs = bctx.ctxt.tcx.hir().attrs(dst_expr.hir_id);

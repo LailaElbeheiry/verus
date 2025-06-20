@@ -88,6 +88,7 @@ pub(crate) fn translate_trait<'tcx>(
     let (generics_params, mut typ_bounds) = {
         let (generics_params, mut typ_bounds) = check_generics_bounds_with_polarity(
             tcx,
+            &mut vir::ast::OwnershipHintsX::default(),
             &ctxt.verus_items,
             trait_generics.span,
             Some(trait_generics),
@@ -197,6 +198,7 @@ pub(crate) fn translate_trait<'tcx>(
             trait_item;
         let (item_generics_params, item_typ_bounds) = check_generics_bounds_with_polarity(
             tcx,
+            &mut vir::ast::OwnershipHintsX::default(),
             &ctxt.verus_items,
             item_generics.span,
             Some(item_generics),
@@ -296,6 +298,7 @@ pub(crate) fn translate_trait<'tcx>(
                 let bounds = bounds.iter().map(|p| (p, *span)).collect::<Vec<_>>();
                 let vir_bounds = process_predicate_bounds(
                     tcx,
+                    &mut vir::ast::OwnershipHintsX::default(),
                     trait_def_id,
                     &ctxt.verus_items,
                     bounds.iter(),

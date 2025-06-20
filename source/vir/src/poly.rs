@@ -1109,6 +1109,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         exec_proof_check,
         recommends_check,
         safe_api_check,
+        ownership_hints,
     } = &function.x;
 
     if attrs.is_decrease_by {
@@ -1216,6 +1217,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         exec_proof_check,
         recommends_check,
         safe_api_check,
+        ownership_hints: ownership_hints.clone(),
     };
     Spanned::new(function.span.clone(), functionx)
 }

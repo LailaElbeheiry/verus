@@ -417,6 +417,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         attrs: _,
         body: _,
         extra_dependencies,
+        ownership_hints: _,
     } = spec_method.x.clone();
     let mut methodx = method.x.clone();
     if methodx.typ_params.len() != typ_params.len() {

@@ -227,7 +227,7 @@ pub type Typ = Arc<TypX>;
 pub type Typs = Arc<Vec<Typ>>;
 // Because of ImplPaths in TypX::Datatype, TypX should not implement PartialEq, Eq
 // See ast_util::types_equal instead
-#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, ToDebugSNode)]
 pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
@@ -1096,6 +1096,12 @@ pub enum Opaqueness {
     Revealed { visibility: Visibility },
 }
 
+pub type OwnershipHints = Arc<OwnershipHintsX>;
+#[derive(Debug, Clone, Default)]
+pub struct OwnershipHintsX {
+    pub copyable: std::collections::HashMap<crate::ast_util::TypWithoutImplPaths, bool>,
+}
+
 /// Function, including signature and body
 pub type Function = Arc<Spanned<FunctionX>>;
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1165,6 +1171,8 @@ pub struct FunctionX {
     /// Extra dependencies, only used for for the purposes of recursion-well-foundedness
     /// Useful only for trusted fns.
     pub extra_dependencies: Vec<Fun>,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub ownership_hints: Option<OwnershipHints>,
 }
 
 pub type RevealGroup = Arc<Spanned<RevealGroupX>>;

@@ -96,13 +96,13 @@ pub(crate) fn vec_map<A, B, F: FnMut(&A) -> B>(v: &Vec<A>, f: F) -> Vec<B> {
 #[allow(dead_code)]
 pub(crate) fn vec_map_result<A, B, E, F>(v: &Vec<A>, f: F) -> Result<Vec<B>, E>
 where
-    F: Fn(&A) -> Result<B, E>,
+    F: FnMut(&A) -> Result<B, E>,
 {
     v.iter().map(f).collect()
 }
 
 #[allow(dead_code)]
-pub(crate) fn slice_vec_map_result<A, B, E, F: Fn(&A) -> Result<B, E>>(
+pub(crate) fn slice_vec_map_result<A, B, E, F: FnMut(&A) -> Result<B, E>>(
     slice: &[A],
     f: F,
 ) -> Result<Vec<B>, E> {

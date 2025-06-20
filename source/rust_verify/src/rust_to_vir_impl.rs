@@ -111,6 +111,7 @@ fn trait_impl_to_vir<'tcx>(
             GenericArgKind::Type(ty) => {
                 types.push(mid_ty_to_vir(
                     ctxt.tcx,
+                    &mut vir::ast::OwnershipHintsX::default(),
                     &ctxt.verus_items,
                     impl_def_id,
                     span,
@@ -128,6 +129,7 @@ fn trait_impl_to_vir<'tcx>(
     let trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_did);
     let (typ_params, typ_bounds) = crate::rust_to_vir_base::check_generics_bounds_no_polarity(
         ctxt.tcx,
+        &mut vir::ast::OwnershipHintsX::default(),
         &ctxt.verus_items,
         span,
         hir_generics,
@@ -151,6 +153,7 @@ fn trait_impl_to_vir<'tcx>(
 
 fn translate_assoc_type<'tcx>(
     ctxt: &Context<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     name: Ident,
     impll_generics_span: Span,
     impll_generics: Option<&'tcx rustc_hir::Generics<'tcx>>,
@@ -163,9 +166,18 @@ fn translate_assoc_type<'tcx>(
     let impl_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, impl_def_id);
     let trait_ref = ctxt.tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
     let ty = ctxt.tcx.type_of(impl_item_id).skip_binder();
-    let typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, impl_item_id, impl_item_span, &ty, false)?;
+    let typ = mid_ty_to_vir(
+        ctxt.tcx,
+        collected_ownership_hints,
+        &ctxt.verus_items,
+        impl_item_id,
+        impl_item_span,
+        &ty,
+        false,
+    )?;
     let (typ_params, typ_bounds) = crate::rust_to_vir_base::check_generics_bounds_no_polarity(
         ctxt.tcx,
+        collected_ownership_hints,
         &ctxt.verus_items,
         impll_generics_span,
         impll_generics,
@@ -243,6 +255,8 @@ pub(crate) fn translate_impl<'tcx>(
     if impll.safety != Safety::Safe && impll.of_trait.is_none() {
         return err_span(item.span, "the verifier does not support `unsafe` here");
     }
+
+    let mut collected_ownership_hints = vir::ast::OwnershipHintsX::default();
 
     if let Some(TraitRef { path, hir_ref_id: _ }) = impll.of_trait {
         let trait_def_id = path.res.def_id();
@@ -442,6 +456,7 @@ pub(crate) fn translate_impl<'tcx>(
                         let name = Arc::new(impl_item.ident.to_string());
                         let assoc_type_impl = translate_assoc_type(
                             ctxt,
+                            &mut collected_ownership_hints,
                             name,
                             impll.generics.span,
                             Some(&impll.generics),
@@ -468,6 +483,7 @@ pub(crate) fn translate_impl<'tcx>(
                     let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();
                     let vir_ty = mid_ty_to_vir(
                         ctxt.tcx,
+                        &mut collected_ownership_hints,
                         &ctxt.verus_items,
                         def_id,
                         impl_item.span,
@@ -622,6 +638,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
                         }
                         if let Ok(assoc_type_impl) = translate_assoc_type(
                             ctxt,
+                            &mut vir::ast::OwnershipHintsX::default(),
                             name,
                             span,
                             None,

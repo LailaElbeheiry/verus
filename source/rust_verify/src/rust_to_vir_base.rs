@@ -28,7 +28,7 @@ use vir::ast::{
     Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, Path, PathX,
     Primitive, TraitId, Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
 };
-use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
+use vir::ast_util::{TypWithoutImplPaths, str_unique_var, types_equal, undecorate_typ};
 
 // TODO: eventually, this should just always be true
 thread_local! {
@@ -836,6 +836,7 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
 // returns VIR Typ and whether Ghost/Tracked was erased from around the outside of the VIR Typ
 pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
     tcx: TyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     verus_items: &crate::verus_items::VerusItems,
     param_env_src: DefId,
     span: Span,
@@ -843,22 +844,42 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
     allow_mut_ref: bool,
 ) -> Result<(Typ, bool), VirErr> {
     use vir::ast::TypDecoration;
-    let t_rec = |t: &rustc_middle::ty::Ty<'tcx>| {
-        mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, t, allow_mut_ref)
+    let t_rec = |t: &rustc_middle::ty::Ty<'tcx>,
+                 collected_ownership_hints: &mut vir::ast::OwnershipHintsX| {
+        mid_ty_to_vir_ghost(
+            tcx,
+            collected_ownership_hints,
+            verus_items,
+            param_env_src,
+            span,
+            t,
+            allow_mut_ref,
+        )
     };
-    let t_rec_flags = |t: &rustc_middle::ty::Ty<'tcx>, allow_mut_ref: bool| {
-        mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, t, allow_mut_ref)
-    };
+    let t_rec_flags =
+        |t: &rustc_middle::ty::Ty<'tcx>,
+         allow_mut_ref: bool,
+         collected_ownership_hints: &mut vir::ast::OwnershipHintsX| {
+            mid_ty_to_vir_ghost(
+                tcx,
+                collected_ownership_hints,
+                verus_items,
+                param_env_src,
+                span,
+                t,
+                allow_mut_ref,
+            )
+        };
     let t = match ty.kind() {
         TyKind::Bool => (Arc::new(TypX::Bool), false),
         TyKind::Uint(_) | TyKind::Int(_) => (Arc::new(TypX::Int(mk_range(verus_items, ty))), false),
         TyKind::Char => (Arc::new(TypX::Int(IntRange::Char)), false),
         TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => {
-            let (t0, ghost) = t_rec(tys)?;
+            let (t0, ghost) = t_rec(tys, collected_ownership_hints)?;
             (Arc::new(TypX::Decorate(TypDecoration::Ref, None, t0.clone())), ghost)
         }
         TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) if allow_mut_ref => {
-            let (t0, ghost) = t_rec(tys)?;
+            let (t0, ghost) = t_rec(tys, collected_ownership_hints)?;
             (Arc::new(TypX::Decorate(TypDecoration::MutRef, None, t0.clone())), ghost)
         }
         TyKind::Param(param) if param.name == kw::SelfUpper => {
@@ -875,18 +896,18 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Tuple(_) => {
             let mut typs: Vec<Typ> = Vec::new();
             for t in ty.tuple_fields().iter() {
-                typs.push(t_rec(&t)?.0);
+                typs.push(t_rec(&t, collected_ownership_hints)?.0);
             }
             (vir::ast_util::mk_tuple_typ(&Arc::new(typs)), false)
         }
         TyKind::Slice(ty) => {
-            let typ = t_rec(ty)?.0;
+            let typ = t_rec(ty, collected_ownership_hints)?.0;
             let typs = Arc::new(vec![typ]);
             (Arc::new(TypX::Primitive(Primitive::Slice, typs)), false)
         }
         TyKind::Str => (Arc::new(TypX::Primitive(Primitive::StrSlice, Arc::new(vec![]))), false),
         TyKind::RawPtr(ty, mutbl) => {
-            let typ = t_rec(ty)?.0;
+            let typ = t_rec(ty, collected_ownership_hints)?.0;
             let typs = Arc::new(vec![typ]);
 
             let typ = Arc::new(TypX::Primitive(Primitive::Ptr, typs));
@@ -897,8 +918,16 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             (dec_typ, false)
         }
         TyKind::Array(ty, const_len) => {
-            let typ =
-                mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, ty, allow_mut_ref)?.0;
+            let typ = mid_ty_to_vir_ghost(
+                tcx,
+                collected_ownership_hints,
+                verus_items,
+                param_env_src,
+                span,
+                ty,
+                allow_mut_ref,
+            )?
+            .0;
             let len = mid_ty_const_to_vir(tcx, Some(span), const_len)?;
             let typs = Arc::new(vec![typ, len]);
             (Arc::new(TypX::Primitive(Primitive::Array, typs)), false)
@@ -924,7 +953,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 for arg in args.iter() {
                     match arg.unpack() {
                         rustc_middle::ty::GenericArgKind::Type(t) => {
-                            typ_args.push(t_rec(&t)?);
+                            typ_args.push(t_rec(&t, collected_ownership_hints)?);
                         }
                         rustc_middle::ty::GenericArgKind::Lifetime(_) => {}
                         rustc_middle::ty::GenericArgKind::Const(cnst) => {
@@ -996,7 +1025,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let sig = substs.as_closure().sig();
             let mut args: Vec<Typ> = Vec::new();
             for t in sig.inputs().skip_binder().iter() {
-                args.push(t_rec(t)?.0);
+                args.push(t_rec(t, collected_ownership_hints)?.0);
             }
             assert!(args.len() == 1);
             let args = match &*args[0] {
@@ -1004,7 +1033,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 _ => panic!("expected tuple type"),
             };
 
-            let ret = t_rec(&sig.output().skip_binder())?.0;
+            let ret = t_rec(&sig.output().skip_binder(), collected_ownership_hints)?.0;
             let id = def.as_local().unwrap().local_def_index.index();
             (Arc::new(TypX::AnonymousClosure(args, ret, id)), false)
         }
@@ -1030,7 +1059,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                         assert!(!matches!(t.kind(), TyKind::Infer(..)));
                     }
                 }
-                return t_rec(&norm.value);
+                return t_rec(&norm.value, collected_ownership_hints);
             }
             // If normalization isn't possible, return a projection type:
             let assoc_item = tcx.associated_item(t.def_id);
@@ -1049,7 +1078,8 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     for arg in t_args.iter() {
                         match arg.unpack() {
                             rustc_middle::ty::GenericArgKind::Type(t) => {
-                                trait_typ_args.push(t_rec_flags(&t, false)?.0);
+                                trait_typ_args
+                                    .push(t_rec_flags(&t, false, collected_ownership_hints)?.0);
                             }
                             rustc_middle::ty::GenericArgKind::Lifetime(_) => {
                                 panic!("already filtered out lifetimes");
@@ -1117,6 +1147,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     rustc_middle::ty::GenericArgKind::Type(t) => {
                         typ_args.push(mid_ty_to_vir_ghost(
                             tcx,
+                            collected_ownership_hints,
                             verus_items,
                             param_env_src,
                             span,
@@ -1154,6 +1185,16 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Pat(_, _) => unsupported_err!(span, "pattern types"),
         TyKind::UnsafeBinder(_) => unsupported_err!(span, "unsafe binder types"),
     };
+
+    if !ty.has_escaping_bound_vars()
+    /* ownership_hints */
+    {
+        let param_env = tcx.param_env(param_env_src);
+        let typing_env = TypingEnv { param_env, typing_mode: TypingMode::PostAnalysis };
+        let is_copy = tcx.type_is_copy_modulo_regions(typing_env, *ty);
+        collected_ownership_hints.copyable.insert(TypWithoutImplPaths(t.0.clone()), is_copy);
+    }
+
     Ok(t)
 }
 
@@ -1172,13 +1213,23 @@ pub(crate) fn mid_ty_to_vir_datatype<'tcx>(
 
 pub(crate) fn mid_ty_to_vir<'tcx>(
     tcx: TyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     verus_items: &crate::verus_items::VerusItems,
     param_env_src: DefId,
     span: Span,
     ty: &rustc_middle::ty::Ty<'tcx>,
     allow_mut_ref: bool,
 ) -> Result<Typ, VirErr> {
-    Ok(mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, ty, allow_mut_ref)?.0)
+    Ok(mid_ty_to_vir_ghost(
+        tcx,
+        collected_ownership_hints,
+        verus_items,
+        param_env_src,
+        span,
+        ty,
+        allow_mut_ref,
+    )?
+    .0)
 }
 
 pub(crate) fn mid_ty_const_to_vir<'tcx>(
@@ -1249,12 +1300,14 @@ pub(crate) fn _ty_resolved_path_to_debug_path(_tcx: TyCtxt<'_>, ty: &Ty) -> Stri
 
 pub(crate) fn typ_of_node<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     span: Span,
     id: &HirId,
     allow_mut_ref: bool,
 ) -> Result<Typ, VirErr> {
     mid_ty_to_vir(
         bctx.ctxt.tcx,
+        collected_ownership_hints,
         &bctx.ctxt.verus_items,
         bctx.fun_id,
         span,
@@ -1265,12 +1318,21 @@ pub(crate) fn typ_of_node<'tcx>(
 
 pub(crate) fn typ_of_node_expect_mut_ref<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     span: Span,
     id: &HirId,
 ) -> Result<Typ, VirErr> {
     let ty = bctx.types.node_type(*id);
     if let TyKind::Ref(_, _tys, rustc_ast::Mutability::Mut) = ty.kind() {
-        mid_ty_to_vir(bctx.ctxt.tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &ty, true)
+        mid_ty_to_vir(
+            bctx.ctxt.tcx,
+            collected_ownership_hints,
+            &bctx.ctxt.verus_items,
+            bctx.fun_id,
+            span,
+            &ty,
+            true,
+        )
     } else {
         err_span(span, "a mutable reference is expected here")
     }
@@ -1305,11 +1367,15 @@ pub(crate) fn implements_structural<'tcx>(
 // Do equality operations on these operands translate into the SMT solver's == operation?
 pub(crate) fn is_smt_equality<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     span: Span,
     id1: &HirId,
     id2: &HirId,
 ) -> Result<bool, VirErr> {
-    let (t1, t2) = (typ_of_node(bctx, span, id1, false)?, typ_of_node(bctx, span, id2, false)?);
+    let (t1, t2) = (
+        typ_of_node(bctx, collected_ownership_hints, span, id1, false)?,
+        typ_of_node(bctx, collected_ownership_hints, span, id2, false)?,
+    );
     match (&*undecorate_typ(&t1), &*undecorate_typ(&t2)) {
         (TypX::Bool, TypX::Bool) => Ok(true),
         (TypX::Int(_), TypX::Int(_)) => Ok(true),
@@ -1329,12 +1395,16 @@ pub(crate) fn is_smt_equality<'tcx>(
 // (possibly with clipping/wrapping for finite-size integers?)
 pub(crate) fn is_smt_arith<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     span1: Span,
     span2: Span,
     id1: &HirId,
     id2: &HirId,
 ) -> Result<bool, VirErr> {
-    let (t1, t2) = (typ_of_node(bctx, span1, id1, false)?, typ_of_node(bctx, span2, id2, false)?);
+    let (t1, t2) = (
+        typ_of_node(bctx, collected_ownership_hints, span1, id1, false)?,
+        typ_of_node(bctx, collected_ownership_hints, span2, id2, false)?,
+    );
     match (&*undecorate_typ(&t1), &*undecorate_typ(&t2)) {
         (TypX::Bool, TypX::Bool) => Ok(true),
         (TypX::Int(_), TypX::Int(_)) => Ok(true),
@@ -1408,6 +1478,7 @@ pub(crate) fn try_get_proof_fn_modes<'tcx>(
 
 pub(crate) fn check_generic_bound<'tcx>(
     tcx: TyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     verus_items: &crate::verus_items::VerusItems,
     param_env_src: DefId,
     span: Span,
@@ -1431,6 +1502,7 @@ pub(crate) fn check_generic_bound<'tcx>(
                 GenericArgKind::Type(ty) => {
                     vir_args.push(mid_ty_to_vir(
                         tcx,
+                        collected_ownership_hints,
                         verus_items,
                         param_env_src,
                         span,
@@ -1491,6 +1563,7 @@ pub(crate) fn param_ty_to_vir_name(param: &rustc_middle::ty::ParamTy) -> String 
 
 pub(crate) fn process_predicate_bounds<'tcx, 'a>(
     tcx: TyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     param_env_src: DefId,
     verus_items: &crate::verus_items::VerusItems,
     predicates: impl Iterator<Item = &'a (Clause<'tcx>, Span)>,
@@ -1535,6 +1608,7 @@ where
 
                 let generic_bound = check_generic_bound(
                     tcx,
+                    collected_ownership_hints,
                     verus_items,
                     param_env_src,
                     *span,
@@ -1561,7 +1635,15 @@ where
                     continue;
                 }
                 let typ = if let TermKind::Ty(ty) = pred.term.unpack() {
-                    mid_ty_to_vir(tcx, verus_items, param_env_src, *span, &ty, false)?
+                    mid_ty_to_vir(
+                        tcx,
+                        collected_ownership_hints,
+                        verus_items,
+                        param_env_src,
+                        *span,
+                        &ty,
+                        false,
+                    )?
                 } else {
                     return err_span(*span, "Verus does not yet support this type of bound");
                 };
@@ -1571,6 +1653,7 @@ where
                 let name = Arc::new(assoc_item.name.to_string());
                 let generic_bound = check_generic_bound(
                     tcx,
+                    collected_ownership_hints,
                     verus_items,
                     param_env_src,
                     *span,
@@ -1595,7 +1678,15 @@ where
             }
             ClauseKind::ConstArgHasType(cnst, ty) => {
                 let t1 = mid_ty_const_to_vir(tcx, Some(*span), &cnst)?;
-                let t2 = mid_ty_to_vir(tcx, verus_items, param_env_src, *span, &ty, false)?;
+                let t2 = mid_ty_to_vir(
+                    tcx,
+                    collected_ownership_hints,
+                    verus_items,
+                    param_env_src,
+                    *span,
+                    &ty,
+                    false,
+                )?;
                 let bound = GenericBoundX::ConstTyp(t1, t2);
                 bounds.push(Arc::new(bound));
             }
@@ -1732,6 +1823,7 @@ pub(crate) fn check_item_external_generics<'tcx>(
 
 fn check_generics_bounds_main<'tcx>(
     tcx: TyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     verus_items: &crate::verus_items::VerusItems,
     span: Span,
     hir_generics: Option<&'tcx Generics<'tcx>>,
@@ -1814,8 +1906,14 @@ fn check_generics_bounds_main<'tcx>(
 
     // Process all trait bounds.
     let predicates = tcx.predicates_of(def_id);
-    let bounds =
-        process_predicate_bounds(tcx, def_id, verus_items, predicates.predicates.iter(), generics)?;
+    let bounds = process_predicate_bounds(
+        tcx,
+        collected_ownership_hints,
+        def_id,
+        verus_items,
+        predicates.predicates.iter(),
+        generics,
+    )?;
 
     // In traits, the first type param is Self. This is handled specially,
     // so we skip it here.
@@ -1906,6 +2004,7 @@ fn check_generics_bounds_main<'tcx>(
 
 pub(crate) fn check_generics_bounds_no_polarity<'tcx>(
     tcx: TyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     verus_items: &crate::verus_items::VerusItems,
     span: Span,
     hir_generics: Option<&'tcx Generics<'tcx>>,
@@ -1914,6 +2013,7 @@ pub(crate) fn check_generics_bounds_no_polarity<'tcx>(
 ) -> Result<(Idents, vir::ast::GenericBounds), VirErr> {
     let (typ_params, typ_bounds) = check_generics_bounds_main(
         tcx,
+        collected_ownership_hints,
         verus_items,
         span,
         hir_generics,
@@ -1929,6 +2029,7 @@ pub(crate) fn check_generics_bounds_no_polarity<'tcx>(
 
 pub(crate) fn check_generics_bounds_with_polarity<'tcx>(
     tcx: TyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     verus_items: &crate::verus_items::VerusItems,
     span: Span,
     hir_generics: Option<&'tcx Generics<'tcx>>,
@@ -1939,6 +2040,7 @@ pub(crate) fn check_generics_bounds_with_polarity<'tcx>(
 ) -> Result<(vir::ast::TypPositives, vir::ast::GenericBounds), VirErr> {
     check_generics_bounds_main(
         tcx,
+        collected_ownership_hints,
         verus_items,
         span,
         hir_generics,

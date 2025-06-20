@@ -183,6 +183,7 @@ fn handle_autospec<'tcx>(
                 }),
                 body: Some(ret_clause.clone()),
                 extra_dependencies: functionx.extra_dependencies.clone(),
+                ownership_hints: functionx.ownership_hints.clone(),
             },
         );
 
@@ -216,7 +217,8 @@ pub(crate) fn body_to_vir<'tcx>(
         external_body,
         in_ghost: mode != Mode::Exec,
     };
-    let e = expr_to_vir(&bctx, &body.value, ExprModifier::REGULAR)?;
+    let mut collected_ownership_hints = vir::ast::OwnershipHintsX::default();
+    let e = expr_to_vir(&bctx, &mut collected_ownership_hints, &body.value, ExprModifier::REGULAR)?;
 
     if external_body {
         match &e.x {
@@ -231,6 +233,7 @@ pub(crate) fn body_to_vir<'tcx>(
 fn check_fn_decl<'tcx>(
     span: Span,
     ctxt: &Context<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     id: DefId,
     decl: &'tcx FnDecl<'tcx>,
     attrs: &[Attribute],
@@ -252,7 +255,15 @@ fn check_fn_decl<'tcx>(
         // so we always return the default mode.
         // The current workaround is to return a struct if the default doesn't work.
         rustc_hir::FnRetTy::Return(_ty) => {
-            let typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, id, span, &output_ty, false)?;
+            let typ = mid_ty_to_vir(
+                ctxt.tcx,
+                collected_ownership_hints,
+                &ctxt.verus_items,
+                id,
+                span,
+                &output_ty,
+                false,
+            )?;
             Ok(Some((typ, get_ret_mode(mode, attrs))))
         }
     }
@@ -888,6 +899,8 @@ pub(crate) fn check_item_fn<'tcx>(
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
     let mode = get_mode(Mode::Exec, attrs);
 
+    let mut collected_ownership_hints = vir::ast::OwnershipHintsX::default();
+
     let external_trait_from_to = if let Some(to_trait_id) = external_trait {
         let from_trait_id = ctxt.tcx.parent(id);
         let from_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, from_trait_id);
@@ -938,6 +951,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let self_typ_params = if let Some((cg, impl_def_id)) = self_generics {
         Some(check_generics_bounds_no_polarity(
             ctxt.tcx,
+            &mut collected_ownership_hints,
             &ctxt.verus_items,
             cg.span,
             Some(cg),
@@ -965,12 +979,22 @@ pub(crate) fn check_item_fn<'tcx>(
                     format!("'unsafe' only makes sense on exec-mode functions"),
                 );
             }
-            check_fn_decl(sig.span, ctxt, id, decl, attrs, mode, fn_sig.output().skip_binder())?
+            check_fn_decl(
+                sig.span,
+                ctxt,
+                &mut collected_ownership_hints,
+                id,
+                decl,
+                attrs,
+                mode,
+                fn_sig.output().skip_binder(),
+            )?
         }
     };
 
     let (sig_typ_params, sig_typ_bounds) = check_generics_bounds_no_polarity(
         ctxt.tcx,
+        &mut collected_ownership_hints,
         &ctxt.verus_items,
         generics.span,
         Some(generics),
@@ -996,6 +1020,8 @@ pub(crate) fn check_item_fn<'tcx>(
         }
     };
 
+    let mut collected_ownership_hints = vir::ast::OwnershipHintsX::default();
+
     let mut vir_mut_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
     let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
     let mut mut_params_redecl: Vec<vir::ast::Stmt> = Vec::new();
@@ -1017,6 +1043,7 @@ pub(crate) fn check_item_fn<'tcx>(
         let typ = {
             let typ = mid_ty_to_vir(
                 ctxt.tcx,
+                &mut collected_ownership_hints,
                 &ctxt.verus_items,
                 id,
                 span,
@@ -1396,6 +1423,7 @@ pub(crate) fn check_item_fn<'tcx>(
         attrs: fattrs,
         body: body_with_mut_redecls,
         extra_dependencies: header.extra_dependencies,
+        ownership_hints: Some(Arc::new(collected_ownership_hints)),
     };
 
     if vattrs.external_fn_specification {
@@ -1479,6 +1507,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             attrs,
             body,
             extra_dependencies,
+            ownership_hints,
         } = func;
 
         unsupported_err_unless!(typ_params.len() == 1, span, "type params");
@@ -1576,6 +1605,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             attrs,
             body,
             extra_dependencies,
+            ownership_hints,
         })
     } else {
         Ok(func)
@@ -1946,6 +1976,7 @@ pub(crate) fn get_external_def_id<'tcx>(
                 for ty in trait_ref.instantiate(tcx, impl_args).args.types() {
                     types.push(mid_ty_to_vir(
                         tcx,
+                        &mut vir::ast::OwnershipHintsX::default(),
                         &verus_items,
                         impl_item_id,
                         sig.span,
@@ -2121,6 +2152,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         attrs: fattrs,
         body: if vattrs.external_body { None } else { Some(vir_body) },
         extra_dependencies: vec![],
+        ownership_hints: None,
     };
 
     let autospec = handle_autospec(ctxt, span, id, &vattrs, &functionx)?;
@@ -2159,16 +2191,26 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     }
 
     let mode = get_mode(Mode::Exec, attrs);
+    let mut collected_ownership_hints = vir::ast::OwnershipHintsX::default();
 
     let fn_sig = ctxt.tcx.fn_sig(id);
     // REVIEW: rustc docs refer to skip_binder as "dangerous"
     let fn_sig = fn_sig.skip_binder();
     let inputs = fn_sig.inputs().skip_binder();
 
-    let ret_typ_mode =
-        check_fn_decl(span, ctxt, id, decl, attrs, mode, fn_sig.output().skip_binder())?;
+    let ret_typ_mode = check_fn_decl(
+        span,
+        ctxt,
+        &mut collected_ownership_hints,
+        id,
+        decl,
+        attrs,
+        mode,
+        fn_sig.output().skip_binder(),
+    )?;
     let (typ_params, typ_bounds) = check_generics_bounds_no_polarity(
         ctxt.tcx,
+        &mut collected_ownership_hints,
         &ctxt.verus_items,
         generics.span,
         Some(generics),
@@ -2183,6 +2225,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         let is_mut = is_mut_ty(ctxt, *input);
         let typ = mid_ty_to_vir(
             ctxt.tcx,
+            &mut collected_ownership_hints,
             &ctxt.verus_items,
             id,
             param.span,
@@ -2241,6 +2284,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         attrs: Default::default(),
         body: None,
         extra_dependencies: vec![],
+        ownership_hints: None,
     };
     let function = ctxt.spanned_new(span, func);
     vir.functions.push(function);

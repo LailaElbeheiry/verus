@@ -120,11 +120,17 @@ fn check_item<'tcx>(
 
                     let crate::reveal_hide::RevealHideResult::RevealItem(fun) = handle_reveal_hide(
                         ctxt,
+                        &mut vir::ast::OwnershipHintsX::default(),
                         expr,
                         args.len(),
                         &args,
                         ctxt.tcx,
-                        None::<fn(vir::ast::ExprX) -> Result<vir::ast::Expr, VirErr>>,
+                        None::<
+                            fn(
+                                vir::ast::ExprX,
+                                &mut vir::ast::OwnershipHintsX,
+                            ) -> Result<vir::ast::Expr, VirErr>,
+                        >,
                     )?
                     else {
                         panic!("handle_reveal_hide must return a RevealItem");
@@ -160,7 +166,15 @@ fn check_item<'tcx>(
         }
 
         let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();
-        let vir_ty = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, def_id, item.span, &mid_ty, false)?;
+        let vir_ty = mid_ty_to_vir(
+            ctxt.tcx,
+            &mut vir::ast::OwnershipHintsX::default(),
+            &ctxt.verus_items,
+            def_id,
+            item.span,
+            &mid_ty,
+            false,
+        )?;
 
         crate::rust_to_vir_func::check_item_const_or_static(
             ctxt,

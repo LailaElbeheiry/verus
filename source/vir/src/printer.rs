@@ -318,6 +318,18 @@ impl ToDebugSNode for FunctionX {
     }
 }
 
+impl ToDebugSNode for OwnershipHintsX {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
+        let OwnershipHintsX { ref copyable } = self;
+        let c_nodes = copyable
+            .iter()
+            .map(|(typ, c)| nodes!({typ.0.to_node(opts)} {c.to_node(opts)}))
+            .collect::<Vec<Node>>();
+        let c_node = Node::List(c_nodes);
+        nodes!(OwnershipHints {Node::Atom(":copyable".to_string())} {c_node})
+    }
+}
+
 impl ToDebugSNode for crate::messages::Span {
     fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         if opts.no_span {

@@ -7,8 +7,8 @@
 //! SST is designed to make the translation to AIR as straightforward as possible.
 
 use crate::ast::{
-    AssertQueryMode, BinaryOp, Constant, Dt, Fun, Mode, NullaryOpr, Path, Quant, SpannedTyped, Typ,
-    Typs, UnaryOp, UnaryOpr, VarAt, VarBinders, VarIdent,
+    AssertQueryMode, BinaryOp, Constant, Dt, Fun, Mode, NullaryOpr, OwnershipHints, Path, Quant,
+    SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr, VarAt, VarBinders, VarIdent,
 };
 use crate::def::Spanned;
 use crate::interpreter::InterpExp;
@@ -63,7 +63,27 @@ pub enum CallFun {
     InternalFun(InternalFun),
 }
 
+#[derive(Debug, Clone, ToDebugSNode)]
+struct ExpTags {
+    borrow: bool,
+}
+
+#[derive(Debug, Clone, ToDebugSNode)]
+struct SpannedTypedTagged<X> {
+    x: SpannedTyped<X>,
+    tags: ExpTags,
+}
+
+impl<X> std::ops::Deref for SpannedTypedTagged<X> {
+    type Target = SpannedTyped<X>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.x
+    }
+}
+
 pub type Exp = Arc<SpannedTyped<ExpX>>;
+// TODO(automation) pub type Exp = Arc<SpannedTypedTagged<ExpX>>;
 pub type Exps = Arc<Vec<Exp>>;
 #[derive(Debug, Clone, ToDebugSNode)]
 pub enum ExpX {
@@ -348,6 +368,7 @@ pub struct FunctionSstX {
     pub exec_proof_check: Option<Arc<FuncCheckSst>>,
     pub recommends_check: Option<Arc<FuncCheckSst>>,
     pub safe_api_check: Option<Arc<FuncCheckSst>>,
+    pub ownership_hints: Option<OwnershipHints>,
 }
 
 pub type KrateSst = Arc<KrateSstX>;

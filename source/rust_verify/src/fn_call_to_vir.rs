@@ -42,6 +42,7 @@ use vir::def::field_ident_from_rust;
 
 pub(crate) fn fn_call_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     expr: &Expr<'tcx>,
     f: DefId,
     node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
@@ -52,7 +53,9 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
 
-    let expr_typ = || typ_of_node(bctx, expr.span, &expr.hir_id, false);
+    let expr_typ = |collected_ownership_hints: &mut vir::ast::OwnershipHintsX| {
+        typ_of_node(bctx, collected_ownership_hints, expr.span, &expr.hir_id, false)
+    };
 
     let rust_item = verus_items::get_rust_item(tcx, f);
     let verus_item = bctx.ctxt.get_verus_item(f);
@@ -78,7 +81,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     {
         return Ok(bctx.spanned_typed_new(
             expr.span,
-            &expr_typ()?,
+            &expr_typ(collected_ownership_hints)?,
             ExprX::Block(Arc::new(vec![]), None),
         ));
     }
@@ -86,15 +89,15 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     match rust_item {
         Some(RustItem::BoxNew) if bctx.in_ghost => {
             record_compilable_operator(bctx, expr, CompilableOperator::BoxNew);
-            return mk_one_vir_arg(bctx, expr.span, &args);
+            return mk_one_vir_arg(bctx, collected_ownership_hints, expr.span, &args);
         }
         Some(RustItem::RcNew) if bctx.in_ghost => {
             record_compilable_operator(bctx, expr, CompilableOperator::RcNew);
-            return mk_one_vir_arg(bctx, expr.span, &args);
+            return mk_one_vir_arg(bctx, collected_ownership_hints, expr.span, &args);
         }
         Some(RustItem::ArcNew) if bctx.in_ghost => {
             record_compilable_operator(bctx, expr, CompilableOperator::ArcNew);
-            return mk_one_vir_arg(bctx, expr.span, &args);
+            return mk_one_vir_arg(bctx, collected_ownership_hints, expr.span, &args);
         }
         Some(RustItem::Panic) => {
             return err_span(
@@ -116,7 +119,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
             };
 
             if is_type_std_rc_or_arc_or_ref(bctx.ctxt.tcx, arg_typ) {
-                let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
+                let arg = mk_one_vir_arg(bctx, collected_ownership_hints, expr.span, &args)?;
                 record_compilable_operator(
                     bctx,
                     expr,
@@ -140,6 +143,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
             _ => {
                 return verus_item_to_vir(
                     bctx,
+                    collected_ownership_hints,
                     expr,
                     expr_typ,
                     verus_item,
@@ -205,7 +209,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 impl_item_args: _,
                 resolved_item: ResolvedItem::FromImpl(did, args),
             } => {
-                let typs = mk_typ_args(bctx, args, did, expr.span)?;
+                let typs = mk_typ_args(bctx, collected_ownership_hints, args, did, expr.span)?;
                 let impl_paths = get_impl_paths(bctx, did, args, None);
 
                 let f =
@@ -229,7 +233,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 // a default method implementation in the trait.
                 // Redirect this to the appropriate per-instance copy of the default method.
 
-                let typs = mk_typ_args(bctx, args, did, expr.span)?;
+                let typs = mk_typ_args(bctx, collected_ownership_hints, args, did, expr.span)?;
 
                 let mut self_trait_impl_path = None;
                 let trait_id = tcx.trait_of_item(did).unwrap();
@@ -266,16 +270,21 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 
     record_call(bctx, expr, ResolvedCall::Call(record_name, autospec_usage));
 
-    let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+    let vir_args = mk_vir_args(bctx, collected_ownership_hints, node_substs, f, &args)?;
 
-    let typ_args = mk_typ_args(bctx, node_substs, f, expr.span)?;
+    let typ_args = mk_typ_args(bctx, collected_ownership_hints, node_substs, f, expr.span)?;
     let impl_paths = get_impl_paths(bctx, f, node_substs, None);
     let target = CallTarget::Fun(target_kind, name, typ_args, impl_paths, autospec_usage);
-    Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, ExprX::Call(target, Arc::new(vir_args))))
+    Ok(bctx.spanned_typed_new(
+        expr.span,
+        &expr_typ(collected_ownership_hints)?,
+        ExprX::Call(target, Arc::new(vir_args)),
+    ))
 }
 
 pub(crate) fn deref_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     trait_fun_id: DefId,
     arg: vir::ast::Expr,
     expr_typ: Typ,
@@ -288,7 +297,7 @@ pub(crate) fn deref_to_vir<'tcx>(
     let res = resolve_trait_item(span, tcx, typing_env, trait_fun_id, node_substs)?;
     let target_kind = match res {
         ResolutionResult::Resolved { resolved_item: ResolvedItem::FromImpl(did, args), .. } => {
-            let typs = mk_typ_args(bctx, args, did, span)?;
+            let typs = mk_typ_args(bctx, collected_ownership_hints, args, did, span)?;
             let impl_paths = get_impl_paths(bctx, did, args, None);
             let resolved =
                 Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
@@ -302,7 +311,7 @@ pub(crate) fn deref_to_vir<'tcx>(
         ResolutionResult::Unresolved => vir::ast::CallTargetKind::Dynamic,
         _ => crate::internal_err!(span, "unexpected deref"),
     };
-    let typ_args = mk_typ_args(bctx, node_substs, trait_fun_id, span)?;
+    let typ_args = mk_typ_args(bctx, collected_ownership_hints, node_substs, trait_fun_id, span)?;
     let impl_paths = get_impl_paths(bctx, trait_fun_id, node_substs, None);
     let trait_fun =
         Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, trait_fun_id) });
@@ -315,8 +324,9 @@ pub(crate) fn deref_to_vir<'tcx>(
 
 fn verus_item_to_vir<'tcx, 'a>(
     bctx: &'a BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     expr: &'a Expr<'tcx>,
-    expr_typ: impl Fn() -> Result<Arc<TypX>, VirErr>,
+    expr_typ: impl Fn(&mut vir::ast::OwnershipHintsX) -> Result<Arc<TypX>, VirErr>,
     verus_item: &VerusItem,
     args: &'a Vec<&'tcx Expr<'tcx>>,
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
@@ -329,8 +339,13 @@ fn verus_item_to_vir<'tcx, 'a>(
     let f_name = tcx.def_path_str(f);
     let args_len = args.len();
 
-    let mk_expr = |x: ExprX| Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, x));
-    let mk_expr_span = |span: Span, x: ExprX| Ok(bctx.spanned_typed_new(span, &expr_typ()?, x));
+    let mk_expr = |x: ExprX, collected_ownership_hints: &mut vir::ast::OwnershipHintsX| {
+        Ok(bctx.spanned_typed_new(expr.span, &expr_typ(collected_ownership_hints)?, x))
+    };
+    let mk_expr_span =
+        |span: Span, x: ExprX, collected_ownership_hints: &mut vir::ast::OwnershipHintsX| {
+            Ok(bctx.spanned_typed_new(span, &expr_typ(collected_ownership_hints)?, x))
+        };
     match verus_item {
         VerusItem::OpenInvariantBlock(_) => err_span(
             expr.span,
@@ -357,9 +372,18 @@ fn verus_item_to_vir<'tcx, 'a>(
                         }
                     };
                     let in_negative_literal = false;
-                    check_lit_int(&bctx.ctxt, expr.span, in_negative_literal, i, &expr_typ()?)?
+                    check_lit_int(
+                        &bctx.ctxt,
+                        expr.span,
+                        in_negative_literal,
+                        i,
+                        &expr_typ(collected_ownership_hints)?,
+                    )?
                 }
-                mk_expr(ExprX::Const(const_int_from_string(s.to_string())))
+                mk_expr(
+                    ExprX::Const(const_int_from_string(s.to_string())),
+                    collected_ownership_hints,
+                )
             } else {
                 err_span(arg.span, "spec_literal_* requires a string literal")
             }
@@ -367,7 +391,10 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::Spec(spec_item) => match spec_item {
             SpecItem::NoMethodBody => {
                 record_spec_fn_no_proof_args(bctx, expr);
-                mk_expr(ExprX::Header(Arc::new(HeaderExprX::NoMethodBody)))
+                mk_expr(
+                    ExprX::Header(Arc::new(HeaderExprX::NoMethodBody)),
+                    collected_ownership_hints,
+                )
             }
             SpecItem::Requires
             | SpecItem::Recommends
@@ -383,8 +410,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
                 let subargs = extract_array(args[0]);
 
-                let vir_args =
-                    vec_map_result(&subargs, |arg| expr_to_vir(&bctx, arg, ExprModifier::REGULAR))?;
+                let vir_args = vec_map_result(&subargs, |arg| {
+                    expr_to_vir(&bctx, collected_ownership_hints, arg, ExprModifier::REGULAR)
+                })?;
 
                 if matches!(spec_item, SpecItem::Returns) && subargs.len() != 1 {
                     return err_span(
@@ -431,7 +459,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     SpecItem::Returns => Arc::new(HeaderExprX::Returns(vir_args[0].clone())),
                     _ => unreachable!(),
                 };
-                mk_expr(ExprX::Header(header))
+                mk_expr(ExprX::Header(header), collected_ownership_hints)
             }
             SpecItem::OpensInvariantsExcept => {
                 record_spec_fn_no_proof_args(bctx, expr);
@@ -446,7 +474,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     bctx.ctxt.spans.to_air_span(expr.span.clone()),
                     Arc::new(Vec::new()),
                 ));
-                mk_expr(ExprX::Header(header))
+                mk_expr(ExprX::Header(header), collected_ownership_hints)
             }
             SpecItem::OpensInvariantsAny => {
                 record_spec_fn_no_proof_args(bctx, expr);
@@ -454,32 +482,33 @@ fn verus_item_to_vir<'tcx, 'a>(
                     bctx.ctxt.spans.to_air_span(expr.span.clone()),
                     Arc::new(Vec::new()),
                 ));
-                mk_expr(ExprX::Header(header))
+                mk_expr(ExprX::Header(header), collected_ownership_hints)
             }
             SpecItem::OpensInvariantsSet => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
+                let arg = mk_one_vir_arg(bctx, collected_ownership_hints, expr.span, &args)?;
                 let header = Arc::new(HeaderExprX::InvariantOpensSet(arg));
-                mk_expr(ExprX::Header(header))
+                mk_expr(ExprX::Header(header), collected_ownership_hints)
             }
             SpecItem::Ensures => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(args_len == 1, expr.span, "expected ensures", &args);
                 let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                let header = extract_ensures(&bctx, args[0])?;
+                let header = extract_ensures(&bctx, collected_ownership_hints, args[0])?;
                 // extract_ensures does most of the necessary work, so we can return at this point
-                mk_expr_span(args[0].span, ExprX::Header(header))
+                mk_expr_span(args[0].span, ExprX::Header(header), collected_ownership_hints)
             }
             SpecItem::Decreases => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(args_len == 1, expr.span, "expected decreases", &args);
                 let subargs = extract_tuple(args[0]);
                 let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                let vir_args =
-                    vec_map_result(&subargs, |arg| expr_to_vir(&bctx, arg, ExprModifier::REGULAR))?;
+                let vir_args = vec_map_result(&subargs, |arg| {
+                    expr_to_vir(&bctx, collected_ownership_hints, arg, ExprModifier::REGULAR)
+                })?;
                 let header = Arc::new(HeaderExprX::Decreases(Arc::new(vir_args)));
-                mk_expr(ExprX::Header(header))
+                mk_expr(ExprX::Header(header), collected_ownership_hints)
             }
             SpecItem::InvariantExceptBreak | SpecItem::Invariant => {
                 record_spec_fn_no_proof_args(bctx, expr);
@@ -491,8 +520,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                     }
                 }
                 let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                let vir_args =
-                    vec_map_result(&subargs, |arg| expr_to_vir(&bctx, arg, ExprModifier::REGULAR))?;
+                let vir_args = vec_map_result(&subargs, |arg| {
+                    expr_to_vir(&bctx, collected_ownership_hints, arg, ExprModifier::REGULAR)
+                })?;
                 let header = match spec_item {
                     SpecItem::InvariantExceptBreak => {
                         Arc::new(HeaderExprX::InvariantExceptBreak(Arc::new(vir_args)))
@@ -500,32 +530,32 @@ fn verus_item_to_vir<'tcx, 'a>(
                     SpecItem::Invariant => Arc::new(HeaderExprX::Invariant(Arc::new(vir_args))),
                     _ => unreachable!(),
                 };
-                mk_expr(ExprX::Header(header))
+                mk_expr(ExprX::Header(header), collected_ownership_hints)
             }
             SpecItem::DecreasesBy | SpecItem::RecommendsBy => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(args_len == 1, expr.span, "expected function", &args);
                 let x = get_fn_path(bctx, &args[0])?;
                 let header = Arc::new(HeaderExprX::DecreasesBy(x));
-                mk_expr(ExprX::Header(header))
+                mk_expr(ExprX::Header(header), collected_ownership_hints)
             }
             SpecItem::DecreasesWhen => {
                 record_spec_fn_no_proof_args(bctx, expr);
-                let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
+                let arg = mk_one_vir_arg(bctx, collected_ownership_hints, expr.span, &args)?;
                 let header = Arc::new(HeaderExprX::DecreasesWhen(arg));
-                mk_expr(ExprX::Header(header))
+                mk_expr(ExprX::Header(header), collected_ownership_hints)
             }
             SpecItem::NoUnwind => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 let header = Arc::new(HeaderExprX::NoUnwind);
-                mk_expr(ExprX::Header(header))
+                mk_expr(ExprX::Header(header), collected_ownership_hints)
             }
             SpecItem::NoUnwindWhen => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
+                let arg = mk_one_vir_arg(bctx, collected_ownership_hints, expr.span, &args)?;
                 let header = Arc::new(HeaderExprX::NoUnwindWhen(arg));
-                mk_expr(ExprX::Header(header))
+                mk_expr(ExprX::Header(header), collected_ownership_hints)
             }
             SpecItem::Admit => {
                 record_spec_fn_no_proof_args(bctx, expr);
@@ -535,12 +565,15 @@ fn verus_item_to_vir<'tcx, 'a>(
                     &Arc::new(TypX::Bool),
                     ExprX::Const(Constant::Bool(false)),
                 );
-                mk_expr(ExprX::AssertAssume { is_assume: true, expr: f })
+                mk_expr(ExprX::AssertAssume { is_assume: true, expr: f }, collected_ownership_hints)
             }
             SpecItem::Assume => {
                 record_spec_fn_no_proof_args(bctx, expr);
-                let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
-                mk_expr(ExprX::AssertAssume { is_assume: true, expr: arg })
+                let arg = mk_one_vir_arg(bctx, collected_ownership_hints, expr.span, &args)?;
+                mk_expr(
+                    ExprX::AssertAssume { is_assume: true, expr: arg },
+                    collected_ownership_hints,
+                )
             }
         },
         VerusItem::Quant(quant_item) => {
@@ -551,7 +584,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 QuantItem::Exists => air::ast::Quant::Exists,
             };
             let quant = Quant { quant };
-            extract_quant(bctx, expr.span, quant, args[0])
+            extract_quant(bctx, collected_ownership_hints, expr.span, quant, args[0])
         }
         VerusItem::Directive(directive_item) => match directive_item {
             DirectiveItem::ExtraDependency => {
@@ -564,7 +597,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 );
                 let x = get_fn_path(bctx, &args[0])?;
                 let header = Arc::new(HeaderExprX::ExtraDependency(x));
-                mk_expr(ExprX::Header(header))
+                mk_expr(ExprX::Header(header), collected_ownership_hints)
             }
             DirectiveItem::RevealHide => {
                 // {
@@ -581,6 +614,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 record_spec_fn_no_proof_args(bctx, expr);
                 let RevealHideResult::Expr(expr) = crate::reveal_hide::handle_reveal_hide(
                     &bctx.ctxt,
+                    collected_ownership_hints,
                     expr,
                     args_len,
                     args,
@@ -602,7 +636,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 } else {
                     None
                 } {
-                    mk_expr(ExprX::RevealString(Arc::new(s.to_string())))
+                    mk_expr(ExprX::RevealString(Arc::new(s.to_string())), collected_ownership_hints)
                 } else {
                     err_span(args[0].span, "string literal expected".to_string())
                 }
@@ -617,7 +651,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         &args
                     );
                     let s = get_string_lit_arg(&args[0], &f_name)?;
-                    mk_expr(ExprX::AirStmt(Arc::new(s)))
+                    mk_expr(ExprX::AirStmt(Arc::new(s)), collected_ownership_hints)
                 } else {
                     err_span(
                         expr.span,
@@ -631,12 +665,14 @@ fn verus_item_to_vir<'tcx, 'a>(
             ExprItem::Choose => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(args_len == 1, expr.span, "expected choose", &args);
-                extract_choose(bctx, expr.span, args[0], false, expr_typ()?)
+                let t = expr_typ(collected_ownership_hints)?;
+                extract_choose(bctx, collected_ownership_hints, expr.span, args[0], false, t)
             }
             ExprItem::ChooseTuple => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(args_len == 1, expr.span, "expected choose", &args);
-                extract_choose(bctx, expr.span, args[0], true, expr_typ()?)
+                let t = expr_typ(collected_ownership_hints)?;
+                extract_choose(bctx, collected_ownership_hints, expr.span, args[0], true, t)
             }
             ExprItem::Old => {
                 record_spec_fn_no_proof_args(bctx, expr);
@@ -646,7 +682,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                 )) = &args[0].kind
                 {
                     if let Node::Pat(pat) = tcx.hir_node(*id) {
-                        let typ = typ_of_node_expect_mut_ref(bctx, args[0].span, &expr.hir_id)?;
+                        let typ = typ_of_node_expect_mut_ref(
+                            bctx,
+                            collected_ownership_hints,
+                            args[0].span,
+                            &expr.hir_id,
+                        )?;
                         return Ok(bctx.spanned_typed_new(
                             expr.span,
                             &typ,
@@ -661,13 +702,22 @@ fn verus_item_to_vir<'tcx, 'a>(
                 match &expr.kind {
                     ExprKind::Call(_, args) if args.len() == 2 => {
                         let arg0 = args.first().unwrap();
-                        let arg0 = expr_to_vir(bctx, arg0, ExprModifier::REGULAR).expect(
+                        let arg0 = expr_to_vir(
+                            bctx,
+                            collected_ownership_hints,
+                            arg0,
+                            ExprModifier::REGULAR,
+                        )
+                        .expect(
                             "invalid parameter for builtin::array_index at arg0, arg0 must be self",
                         );
                         let arg1 = &args[1];
-                        let arg1 = expr_to_vir(bctx, arg1, ExprModifier::REGULAR)
+                        let arg1 = expr_to_vir(bctx, collected_ownership_hints, arg1, ExprModifier::REGULAR)
                             .expect("invalid parameter for builtin::array_index at arg1; arg1 must be an integer");
-                        mk_expr(ExprX::Binary(BinaryOp::ArrayIndex, arg0, arg1))
+                        mk_expr(
+                            ExprX::Binary(BinaryOp::ArrayIndex, arg0, arg1),
+                            collected_ownership_hints,
+                        )
                     }
                     _ => panic!(
                         "Expected a call for builtin::array_index with two argument but did not receive it"
@@ -680,9 +730,14 @@ fn verus_item_to_vir<'tcx, 'a>(
                     ExprKind::Call(_, args) => {
                         assert!(args.len() == 1);
                         let arg0 = args.first().unwrap();
-                        let arg0 = expr_to_vir(bctx, arg0, ExprModifier::REGULAR)
-                            .expect("internal compiler error");
-                        mk_expr(ExprX::Unary(UnaryOp::StrLen, arg0))
+                        let arg0 = expr_to_vir(
+                            bctx,
+                            collected_ownership_hints,
+                            arg0,
+                            ExprModifier::REGULAR,
+                        )
+                        .expect("internal compiler error");
+                        mk_expr(ExprX::Unary(UnaryOp::StrLen, arg0), collected_ownership_hints)
                     }
                     _ => panic!(
                         "Expected a call for builtin::strslice_len with one argument but did not receive it"
@@ -694,13 +749,16 @@ fn verus_item_to_vir<'tcx, 'a>(
                 match &expr.kind {
                     ExprKind::Call(_, args) if args.len() == 2 => {
                         let arg0 = args.first().unwrap();
-                        let arg0 = expr_to_vir(bctx, arg0, ExprModifier::REGULAR).expect(
+                        let arg0 = expr_to_vir(bctx, collected_ownership_hints, arg0, ExprModifier::REGULAR).expect(
                             "invalid parameter for builtin::strslice_get_char at arg0, arg0 must be self",
                         );
                         let arg1 = &args[1];
-                        let arg1 = expr_to_vir(bctx, arg1, ExprModifier::REGULAR)
+                        let arg1 = expr_to_vir(bctx, collected_ownership_hints, arg1, ExprModifier::REGULAR)
                             .expect("invalid parameter for builtin::strslice_get_char at arg1, arg1 must be an integer");
-                        mk_expr(ExprX::Binary(BinaryOp::StrGetChar, arg0, arg1))
+                        mk_expr(
+                            ExprX::Binary(BinaryOp::StrGetChar, arg0, arg1),
+                            collected_ownership_hints,
+                        )
                     }
                     _ => panic!(
                         "Expected a call for builtin::strslice_get_char with two argument but did not receive it"
@@ -713,9 +771,14 @@ fn verus_item_to_vir<'tcx, 'a>(
                     ExprKind::Call(_, args) => {
                         assert!(args.len() == 1);
                         let arg0 = args.first().unwrap();
-                        let arg0 = expr_to_vir(bctx, arg0, ExprModifier::REGULAR)
-                            .expect("internal compiler error");
-                        mk_expr(ExprX::Unary(UnaryOp::StrIsAscii, arg0))
+                        let arg0 = expr_to_vir(
+                            bctx,
+                            collected_ownership_hints,
+                            arg0,
+                            ExprModifier::REGULAR,
+                        )
+                        .expect("internal compiler error");
+                        mk_expr(ExprX::Unary(UnaryOp::StrIsAscii, arg0), collected_ownership_hints)
                     }
                     _ => panic!(
                         "Expected a call for builtin::strslice_is_ascii with one argument but did not receive it"
@@ -733,7 +796,10 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                 let kind = IntegerTypeBoundKind::ArchWordBits;
 
-                mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind, Mode::Spec), arg))
+                mk_expr(
+                    ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind, Mode::Spec), arg),
+                    collected_ownership_hints,
+                )
             }
             ExprItem::ClosureToFnSpec | ExprItem::ClosureToFnProof => {
                 unsupported_err_unless!(args_len == 1, expr.span, "expected closure_to_fn", &args);
@@ -756,10 +822,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                         record_spec_fn_no_proof_args(bctx, expr);
                         None
                     };
+                    let t = expr_typ(collected_ownership_hints)?;
                     closure_to_vir(
                         bctx,
+                        collected_ownership_hints,
                         &args[0],
-                        expr_typ()?,
+                        t,
                         is_spec_fn,
                         proof_fn_modes,
                         ExprModifier::REGULAR,
@@ -771,14 +839,18 @@ fn verus_item_to_vir<'tcx, 'a>(
             ExprItem::SignedMin | ExprItem::SignedMax | ExprItem::UnsignedMax => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 assert!(args.len() == 1);
-                let arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+                let arg =
+                    expr_to_vir(bctx, collected_ownership_hints, &args[0], ExprModifier::REGULAR)?;
                 let kind = match expr_item {
                     ExprItem::SignedMin => IntegerTypeBoundKind::SignedMin,
                     ExprItem::SignedMax => IntegerTypeBoundKind::SignedMax,
                     ExprItem::UnsignedMax => IntegerTypeBoundKind::UnsignedMax,
                     _ => unreachable!(),
                 };
-                mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind, Mode::Spec), arg))
+                mk_expr(
+                    ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind, Mode::Spec), arg),
+                    collected_ownership_hints,
+                )
             }
             ExprItem::IsSmallerThan
             | ExprItem::IsSmallerThanLexicographic
@@ -800,6 +872,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 };
                 mk_is_smaller_than(
                     bctx,
+                    collected_ownership_hints,
                     expr.span,
                     args0,
                     args1,
@@ -809,61 +882,85 @@ fn verus_item_to_vir<'tcx, 'a>(
             ExprItem::InferSpecForLoopIter => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 assert!(args.len() == 2);
-                let arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+                let arg =
+                    expr_to_vir(bctx, collected_ownership_hints, &args[0], ExprModifier::REGULAR)?;
                 let print_hint = matches!(
                     &args[1],
                     Expr { kind: ExprKind::Lit(Spanned { node: LitKind::Bool(true), .. }), .. }
                 );
-                mk_expr(ExprX::Unary(UnaryOp::InferSpecForLoopIter { print_hint }, arg))
+                mk_expr(
+                    ExprX::Unary(UnaryOp::InferSpecForLoopIter { print_hint }, arg),
+                    collected_ownership_hints,
+                )
             }
             ExprItem::IsVariant => {
                 record_spec_fn_allow_proof_args(bctx, expr);
                 assert!(args.len() == 2);
-                let adt_arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+                let adt_arg =
+                    expr_to_vir(bctx, collected_ownership_hints, &args[0], ExprModifier::REGULAR)?;
                 let variant_name = get_string_lit_arg(&args[1], &f_name)?;
 
-                let (adt_path, _) =
-                    check_variant_field(bctx, expr.span, args[0], &variant_name, None)?;
+                let (adt_path, _) = check_variant_field(
+                    bctx,
+                    collected_ownership_hints,
+                    expr.span,
+                    args[0],
+                    &variant_name,
+                    None,
+                )?;
 
-                mk_expr(ExprX::UnaryOpr(
-                    UnaryOpr::IsVariant { datatype: adt_path, variant: str_ident(&variant_name) },
-                    adt_arg,
-                ))
+                mk_expr(
+                    ExprX::UnaryOpr(
+                        UnaryOpr::IsVariant {
+                            datatype: adt_path,
+                            variant: str_ident(&variant_name),
+                        },
+                        adt_arg,
+                    ),
+                    collected_ownership_hints,
+                )
             }
             ExprItem::GetVariantField => {
                 record_spec_fn_allow_proof_args(bctx, expr);
                 assert!(args.len() == 3);
-                let adt_arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+                let adt_arg =
+                    expr_to_vir(bctx, collected_ownership_hints, &args[0], ExprModifier::REGULAR)?;
                 let variant_name = get_string_lit_arg(&args[1], &f_name)?;
                 let field_name = get_string_lit_arg(&args[2], &f_name)?;
 
                 let (adt_path, variant_field) = check_variant_field(
                     bctx,
+                    collected_ownership_hints,
                     expr.span,
                     args[0],
                     &variant_name,
                     Some((field_name, &bctx.types.expr_ty(expr))),
                 )?;
 
-                mk_expr(ExprX::UnaryOpr(
-                    UnaryOpr::Field(FieldOpr {
-                        datatype: adt_path,
-                        variant: str_ident(&variant_name),
-                        field: variant_field.unwrap(),
-                        get_variant: true,
-                        check: VariantCheck::None,
-                    }),
-                    adt_arg,
-                ))
+                mk_expr(
+                    ExprX::UnaryOpr(
+                        UnaryOpr::Field(FieldOpr {
+                            datatype: adt_path,
+                            variant: str_ident(&variant_name),
+                            field: variant_field.unwrap(),
+                            get_variant: true,
+                            check: VariantCheck::None,
+                        }),
+                        adt_arg,
+                    ),
+                    collected_ownership_hints,
+                )
             }
             ExprItem::GetUnionField => {
                 record_spec_fn_allow_proof_args(bctx, expr);
                 assert!(args.len() == 2);
-                let adt_arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+                let adt_arg =
+                    expr_to_vir(bctx, collected_ownership_hints, &args[0], ExprModifier::REGULAR)?;
                 let field_name = get_string_lit_arg(&args[1], &f_name)?;
 
                 let adt_path = check_union_field(
                     bctx,
+                    collected_ownership_hints,
                     expr.span,
                     args[0],
                     &field_name,
@@ -871,16 +968,19 @@ fn verus_item_to_vir<'tcx, 'a>(
                 )?;
 
                 let field_ident = str_ident(&field_name);
-                mk_expr(ExprX::UnaryOpr(
-                    UnaryOpr::Field(FieldOpr {
-                        datatype: adt_path,
-                        variant: field_ident.clone(),
-                        field: field_ident_from_rust(&field_ident),
-                        get_variant: true,
-                        check: VariantCheck::None,
-                    }),
-                    adt_arg,
-                ))
+                mk_expr(
+                    ExprX::UnaryOpr(
+                        UnaryOpr::Field(FieldOpr {
+                            datatype: adt_path,
+                            variant: field_ident.clone(),
+                            field: field_ident_from_rust(&field_ident),
+                            get_variant: true,
+                            check: VariantCheck::None,
+                        }),
+                        adt_arg,
+                    ),
+                    collected_ownership_hints,
+                )
             }
         },
         VerusItem::CompilableOpr(
@@ -902,7 +1002,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 == Some(GhostBlockAttr::Wrapper)
             {
                 let bctx = &BodyCtxt { in_ghost: true, ..bctx.clone() };
-                let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+                let vir_args = mk_vir_args(bctx, collected_ownership_hints, node_substs, f, &args)?;
                 let vir_arg = vir_args[0].clone();
                 match (compilable_opr, get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(arg.hir_id))) {
                     (CompilableOprItem::GhostExec, Some(GhostBlockAttr::GhostWrapped)) => {
@@ -926,7 +1026,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     }
                 }
             } else {
-                let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+                let vir_args = mk_vir_args(bctx, collected_ownership_hints, node_substs, f, &args)?;
                 let vir_arg = vir_args[0].clone();
                 if matches!(verus_item, VerusItem::CompilableOpr(CompilableOprItem::GhostExec)) {
                     let op = UnaryOp::CoerceMode {
@@ -935,7 +1035,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         to_mode: Mode::Exec,
                         kind: ModeCoercion::Other,
                     };
-                    mk_expr(ExprX::Unary(op, vir_arg))
+                    mk_expr(ExprX::Unary(op, vir_arg), collected_ownership_hints)
                 } else {
                     // TrackedExec
                     let op = UnaryOp::CoerceMode {
@@ -944,7 +1044,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         to_mode: Mode::Exec,
                         kind: ModeCoercion::Other,
                     };
-                    mk_expr(ExprX::Unary(op, vir_arg))
+                    mk_expr(ExprX::Unary(op, vir_arg), collected_ownership_hints)
                 }
             }
         }
@@ -953,8 +1053,16 @@ fn verus_item_to_vir<'tcx, 'a>(
             match assert_item {
                 AssertItem::Assert => {
                     unsupported_err_unless!(args_len == 1, expr.span, "expected assert", &args);
-                    let exp = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
-                    mk_expr(ExprX::AssertAssume { is_assume: false, expr: exp })
+                    let exp = expr_to_vir(
+                        bctx,
+                        collected_ownership_hints,
+                        &args[0],
+                        ExprModifier::REGULAR,
+                    )?;
+                    mk_expr(
+                        ExprX::AssertAssume { is_assume: false, expr: exp },
+                        collected_ownership_hints,
+                    )
                 }
                 AssertItem::AssertBy => {
                     unsupported_err_unless!(args_len == 2, expr.span, "expected assert_by", &args);
@@ -964,9 +1072,22 @@ fn verus_item_to_vir<'tcx, 'a>(
                         &Arc::new(TypX::Bool),
                         ExprX::Const(Constant::Bool(true)),
                     );
-                    let ensure = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
-                    let proof = expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?;
-                    mk_expr(ExprX::AssertBy { vars, require, ensure, proof })
+                    let ensure = expr_to_vir(
+                        bctx,
+                        collected_ownership_hints,
+                        &args[0],
+                        ExprModifier::REGULAR,
+                    )?;
+                    let proof = expr_to_vir(
+                        bctx,
+                        collected_ownership_hints,
+                        &args[1],
+                        ExprModifier::REGULAR,
+                    )?;
+                    mk_expr(
+                        ExprX::AssertBy { vars, require, ensure, proof },
+                        collected_ownership_hints,
+                    )
                 }
                 AssertItem::AssertByCompute => {
                     unsupported_err_unless!(
@@ -975,8 +1096,13 @@ fn verus_item_to_vir<'tcx, 'a>(
                         "expected assert_by_compute",
                         &args
                     );
-                    let exp = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
-                    mk_expr(ExprX::AssertCompute(exp, ComputeMode::Z3))
+                    let exp = expr_to_vir(
+                        bctx,
+                        collected_ownership_hints,
+                        &args[0],
+                        ExprModifier::REGULAR,
+                    )?;
+                    mk_expr(ExprX::AssertCompute(exp, ComputeMode::Z3), collected_ownership_hints)
                 }
                 AssertItem::AssertByComputeOnly => {
                     unsupported_err_unless!(
@@ -985,8 +1111,16 @@ fn verus_item_to_vir<'tcx, 'a>(
                         "expected assert_by_compute_only",
                         &args
                     );
-                    let exp = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
-                    mk_expr(ExprX::AssertCompute(exp, ComputeMode::ComputeOnly))
+                    let exp = expr_to_vir(
+                        bctx,
+                        collected_ownership_hints,
+                        &args[0],
+                        ExprModifier::REGULAR,
+                    )?;
+                    mk_expr(
+                        ExprX::AssertCompute(exp, ComputeMode::ComputeOnly),
+                        collected_ownership_hints,
+                    )
                 }
                 AssertItem::AssertNonlinearBy | AssertItem::AssertBitvectorBy => {
                     unsupported_err_unless!(
@@ -995,7 +1129,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                         "expected assert_nonlinear_by/assert_bitvector_by with one argument",
                         &args
                     );
-                    let mut vir_expr = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+                    let mut vir_expr = expr_to_vir(
+                        bctx,
+                        collected_ownership_hints,
+                        &args[0],
+                        ExprModifier::REGULAR,
+                    )?;
                     let header = vir::headers::read_header(&mut vir_expr)?;
                     let requires = if header.require.len() >= 1 {
                         header.require
@@ -1023,16 +1162,19 @@ fn verus_item_to_vir<'tcx, 'a>(
                             "#[verifier::spinoff_prover] is implied for assert by nonlinear_arith and assert by bit_vector",
                         );
                     }
-                    mk_expr(ExprX::AssertQuery {
-                        requires,
-                        ensures,
-                        proof,
-                        mode: match assert_item {
-                            AssertItem::AssertNonlinearBy => AssertQueryMode::NonLinear,
-                            AssertItem::AssertBitvectorBy => AssertQueryMode::BitVector,
-                            _ => unreachable!(),
+                    mk_expr(
+                        ExprX::AssertQuery {
+                            requires,
+                            ensures,
+                            proof,
+                            mode: match assert_item {
+                                AssertItem::AssertNonlinearBy => AssertQueryMode::NonLinear,
+                                AssertItem::AssertBitvectorBy => AssertQueryMode::BitVector,
+                                _ => unreachable!(),
+                            },
                         },
-                    })
+                        collected_ownership_hints,
+                    )
                 }
                 AssertItem::AssertForallBy => {
                     unsupported_err_unless!(
@@ -1041,11 +1183,16 @@ fn verus_item_to_vir<'tcx, 'a>(
                         "expected assert_forall_by",
                         &args
                     );
-                    extract_assert_forall_by(bctx, expr.span, args[0])
+                    extract_assert_forall_by(bctx, collected_ownership_hints, expr.span, args[0])
                 }
                 // internally translate this into `assert_bitvector_by`. REVIEW: consider deprecating this at all
                 AssertItem::AssertBitVector => {
-                    let vir_expr = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+                    let vir_expr = expr_to_vir(
+                        bctx,
+                        collected_ownership_hints,
+                        &args[0],
+                        ExprModifier::REGULAR,
+                    )?;
                     let requires = Arc::new(vec![bctx.spanned_typed_new(
                         expr.span,
                         &Arc::new(TypX::Bool),
@@ -1057,12 +1204,15 @@ fn verus_item_to_vir<'tcx, 'a>(
                         &unit_typ(),
                         ExprX::Block(Arc::new(vec![]), None),
                     );
-                    mk_expr(ExprX::AssertQuery {
-                        requires,
-                        ensures,
-                        proof,
-                        mode: AssertQueryMode::BitVector,
-                    })
+                    mk_expr(
+                        ExprX::AssertQuery {
+                            requires,
+                            ensures,
+                            proof,
+                            mode: AssertQueryMode::BitVector,
+                        },
+                        collected_ownership_hints,
+                    )
                 }
             }
         }
@@ -1072,12 +1222,14 @@ fn verus_item_to_vir<'tcx, 'a>(
             if !bctx.in_ghost {
                 return err_span(expr.span, "use_type_invariant must be in a 'proof' block");
             }
-            let exp = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+            let exp =
+                expr_to_vir(bctx, collected_ownership_hints, &args[0], ExprModifier::REGULAR)?;
 
             // We need to check there's no 'Ghost' decoration.
             let arg_typ = bctx.types.expr_ty_adjusted(&args[0]);
             let t = mid_ty_to_vir(
                 tcx,
+                collected_ownership_hints,
                 &bctx.ctxt.verus_items,
                 bctx.fun_id,
                 expr.span,
@@ -1087,18 +1239,21 @@ fn verus_item_to_vir<'tcx, 'a>(
             vir::user_defined_type_invariants::check_typ_ok_for_use_typ_invariant(&exp.span, &t)?;
 
             // The correct fun is filled in later, in the pass that elaborates these conditions
-            mk_expr(ExprX::AssertAssumeUserDefinedTypeInvariant {
-                is_assume: true,
-                expr: exp,
-                fun: vir::fun!("" => "use_type_invariant_fake_placeholder_fun"),
-            })
+            mk_expr(
+                ExprX::AssertAssumeUserDefinedTypeInvariant {
+                    is_assume: true,
+                    expr: exp,
+                    fun: vir::fun!("" => "use_type_invariant_fake_placeholder_fun"),
+                },
+                collected_ownership_hints,
+            )
         }
         VerusItem::WithTriggers => {
             record_spec_fn_no_proof_args(bctx, expr);
             unsupported_err_unless!(args_len == 2, expr.span, "expected with_triggers", &args);
             let modifier = ExprModifier::REGULAR;
-            let triggers_tuples = expr_to_vir(bctx, args[0], modifier)?;
-            let body = expr_to_vir(bctx, args[1], modifier)?;
+            let triggers_tuples = expr_to_vir(bctx, collected_ownership_hints, args[0], modifier)?;
+            let body = expr_to_vir(bctx, collected_ownership_hints, args[1], modifier)?;
             let mut trigs: Vec<vir::ast::Exprs> = Vec::new();
             if let Some(triggers) = unpack_tuple(&triggers_tuples) {
                 for trigger_tuple in triggers.iter() {
@@ -1112,17 +1267,21 @@ fn verus_item_to_vir<'tcx, 'a>(
                 return err_span(expr.span, "expected tuple arguments to with_triggers");
             }
             let triggers = Arc::new(trigs);
-            mk_expr(ExprX::WithTriggers { triggers, body })
+            mk_expr(ExprX::WithTriggers { triggers, body }, collected_ownership_hints)
         }
         VerusItem::UnaryOp(UnaryOpItem::SpecCastInteger) => {
             record_spec_fn_allow_proof_args(bctx, expr);
-            let to_ty = undecorate_typ(&expr_typ()?);
-            let source_vir = mk_one_vir_arg(bctx, expr.span, &args)?;
+            let to_ty = undecorate_typ(&expr_typ(collected_ownership_hints)?);
+            let source_vir = mk_one_vir_arg(bctx, collected_ownership_hints, expr.span, &args)?;
             let source_ty = undecorate_typ(&source_vir.typ);
 
-            if let Some(expr) =
-                crate::rust_to_vir_expr::maybe_do_ptr_cast(bctx, expr, &args[0], &source_vir)?
-            {
+            if let Some(expr) = crate::rust_to_vir_expr::maybe_do_ptr_cast(
+                bctx,
+                collected_ownership_hints,
+                expr,
+                &args[0],
+                &source_vir,
+            )? {
                 return Ok(expr);
             }
 
@@ -1154,23 +1313,36 @@ fn verus_item_to_vir<'tcx, 'a>(
                     Ok(mk_ty_clip(&to_ty, &source_vir, expr_vattrs.truncate))
                 }
                 ((TypX::Bool, _), TypX::Int(_)) => {
-                    let zero = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(0)))?;
-                    let one = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(1)))?;
-                    mk_expr(ExprX::If(source_vir, one, Some(zero)))
+                    let zero = mk_expr(
+                        ExprX::Const(vir::ast_util::const_int_from_u128(0)),
+                        collected_ownership_hints,
+                    )?;
+                    let one = mk_expr(
+                        ExprX::Const(vir::ast_util::const_int_from_u128(1)),
+                        collected_ownership_hints,
+                    )?;
+                    mk_expr(ExprX::If(source_vir, one, Some(zero)), collected_ownership_hints)
                 }
-                ((_, true), TypX::Int(IntRange::Int)) => {
-                    mk_expr(ExprX::Unary(UnaryOp::CastToInteger, source_vir))
-                }
+                ((_, true), TypX::Int(IntRange::Int)) => mk_expr(
+                    ExprX::Unary(UnaryOp::CastToInteger, source_vir),
+                    collected_ownership_hints,
+                ),
                 ((_, true), TypX::Int(IntRange::Nat)) => {
-                    let cast_to_integer =
-                        mk_expr(ExprX::Unary(UnaryOp::CastToInteger, source_vir))?;
+                    let cast_to_integer = mk_expr(
+                        ExprX::Unary(UnaryOp::CastToInteger, source_vir),
+                        collected_ownership_hints,
+                    )?;
                     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
                     Ok(mk_ty_clip(&to_ty, &cast_to_integer, expr_vattrs.truncate))
                 }
                 ((_, false), TypX::Int(_)) if bctx.types.node_type(args[0].hir_id).is_enum() => {
                     let cast_to = crate::rust_to_vir_expr::expr_cast_enum_int_to_vir(
-                        bctx, args[0], source_vir, mk_expr,
+                        bctx,
+                        collected_ownership_hints,
+                        args[0],
+                        source_vir,
+                        mk_expr,
                     )?;
                     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
@@ -1185,21 +1357,30 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::UnaryOp(UnaryOpItem::SpecNeg) => {
             record_spec_fn_allow_proof_args(bctx, expr);
 
-            match *undecorate_typ(&typ_of_node(bctx, args[0].span, &args[0].hir_id, false)?) {
+            match *undecorate_typ(&typ_of_node(
+                bctx,
+                collected_ownership_hints,
+                args[0].span,
+                &args[0].hir_id,
+                false,
+            )?) {
                 TypX::Int(_) => {}
                 _ => {
                     return err_span(expr.span, "spec_neg expected int type");
                 }
             }
 
-            let varg = mk_one_vir_arg(bctx, expr.span, &args)?;
+            let varg = mk_one_vir_arg(bctx, collected_ownership_hints, expr.span, &args)?;
             let zero_const = vir::ast_util::const_int_from_u128(0);
-            let zero = mk_expr(ExprX::Const(zero_const))?;
-            mk_expr(ExprX::Binary(BinaryOp::Arith(ArithOp::Sub, Mode::Spec), zero, varg))
+            let zero = mk_expr(ExprX::Const(zero_const), collected_ownership_hints)?;
+            mk_expr(
+                ExprX::Binary(BinaryOp::Arith(ArithOp::Sub, Mode::Spec), zero, varg),
+                collected_ownership_hints,
+            )
         }
         VerusItem::Chained(chained_item) => {
             record_spec_fn_allow_proof_args(bctx, expr);
-            let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+            let vir_args = mk_vir_args(bctx, collected_ownership_hints, node_substs, f, &args)?;
             match chained_item {
                 ChainedItem::Value => {
                     unsupported_err_unless!(args_len == 1, expr.span, "spec_chained_value", &args);
@@ -1270,7 +1451,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 record_spec_fn_no_proof_args(bctx, expr);
             }
 
-            let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+            let vir_args = mk_vir_args(bctx, collected_ownership_hints, node_substs, f, &args)?;
             assert!(vir_args.len() == 1);
             let is_ghost_new = verus_item == &VerusItem::CompilableOpr(CompilableOprItem::GhostNew);
             let op = UnaryOp::CoerceMode {
@@ -1279,11 +1460,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                 to_mode: if is_ghost_new { Mode::Proof } else { Mode::Spec },
                 kind: ModeCoercion::Other,
             };
-            mk_expr(ExprX::Unary(op, vir_args[0].clone()))
+            mk_expr(ExprX::Unary(op, vir_args[0].clone()), collected_ownership_hints)
         }
         VerusItem::CompilableOpr(CompilableOprItem::TrackedNew) => {
             record_compilable_operator(bctx, expr, CompilableOperator::TrackedNew);
-            let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+            let vir_args = mk_vir_args(bctx, collected_ownership_hints, node_substs, f, &args)?;
             assert!(vir_args.len() == 1);
             let op = UnaryOp::CoerceMode {
                 op_mode: Mode::Proof,
@@ -1291,11 +1472,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                 to_mode: Mode::Proof,
                 kind: ModeCoercion::Other,
             };
-            mk_expr(ExprX::Unary(op, vir_args[0].clone()))
+            mk_expr(ExprX::Unary(op, vir_args[0].clone()), collected_ownership_hints)
         }
         VerusItem::CompilableOpr(CompilableOprItem::TrackedExecBorrow) => {
             record_compilable_operator(bctx, expr, CompilableOperator::TrackedExecBorrow);
-            let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+            let vir_args = mk_vir_args(bctx, collected_ownership_hints, node_substs, f, &args)?;
             assert!(vir_args.len() == 1);
             let op = UnaryOp::CoerceMode {
                 op_mode: Mode::Exec,
@@ -1303,7 +1484,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 to_mode: Mode::Exec,
                 kind: ModeCoercion::Other,
             };
-            mk_expr(ExprX::Unary(op, vir_args[0].clone()))
+            mk_expr(ExprX::Unary(op, vir_args[0].clone()), collected_ownership_hints)
         }
         VerusItem::CompilableOpr(
             opr @ (CompilableOprItem::TrackedGet | CompilableOprItem::TrackedBorrow),
@@ -1318,7 +1499,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 },
             );
 
-            let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+            let vir_args = mk_vir_args(bctx, collected_ownership_hints, node_substs, f, &args)?;
             assert!(vir_args.len() == 1);
             let op = UnaryOp::CoerceMode {
                 op_mode: Mode::Proof,
@@ -1326,14 +1507,14 @@ fn verus_item_to_vir<'tcx, 'a>(
                 to_mode: Mode::Proof,
                 kind: ModeCoercion::Other,
             };
-            mk_expr(ExprX::Unary(op, vir_args[0].clone()))
+            mk_expr(ExprX::Unary(op, vir_args[0].clone()), collected_ownership_hints)
         }
         VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrowMut)) => {
             record_spec_fn_no_proof_args(bctx, expr);
 
             assert!(args.len() == 1);
             let modif = is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(&args[0]), outer_modifier)?;
-            let vir_arg = expr_to_vir(bctx, &args[0], modif)?;
+            let vir_arg = expr_to_vir(bctx, collected_ownership_hints, &args[0], modif)?;
 
             let op = UnaryOp::CoerceMode {
                 op_mode: Mode::Proof,
@@ -1341,7 +1522,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 to_mode: Mode::Spec,
                 kind: ModeCoercion::BorrowMut,
             };
-            let typ = typ_of_node(bctx, expr.span, &expr.hir_id, true)?;
+            let typ = typ_of_node(bctx, collected_ownership_hints, expr.span, &expr.hir_id, true)?;
             Ok(bctx.spanned_typed_new(expr.span, &typ, ExprX::Unary(op, vir_arg)))
         }
         VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut) => {
@@ -1349,7 +1530,7 @@ fn verus_item_to_vir<'tcx, 'a>(
 
             assert!(args.len() == 1);
             let modif = is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(&args[0]), outer_modifier)?;
-            let vir_arg = expr_to_vir(bctx, &args[0], modif)?;
+            let vir_arg = expr_to_vir(bctx, collected_ownership_hints, &args[0], modif)?;
 
             let op = UnaryOp::CoerceMode {
                 op_mode: Mode::Proof,
@@ -1357,15 +1538,27 @@ fn verus_item_to_vir<'tcx, 'a>(
                 to_mode: Mode::Proof,
                 kind: ModeCoercion::BorrowMut,
             };
-            let typ = typ_of_node(bctx, expr.span, &expr.hir_id, true)?;
+            let typ = typ_of_node(bctx, collected_ownership_hints, expr.span, &expr.hir_id, true)?;
             Ok(bctx.spanned_typed_new(expr.span, &typ, ExprX::Unary(op, vir_arg)))
         }
         VerusItem::BinaryOp(BinaryOpItem::Equality(equ_item)) => {
             record_spec_fn_allow_proof_args(bctx, expr);
 
             if matches!(equ_item, EqualityItem::SpecEq) {
-                let t1 = typ_of_node(bctx, args[0].span, &args[0].hir_id, true)?;
-                let t2 = typ_of_node(bctx, args[1].span, &args[1].hir_id, true)?;
+                let t1 = typ_of_node(
+                    bctx,
+                    collected_ownership_hints,
+                    args[0].span,
+                    &args[0].hir_id,
+                    true,
+                )?;
+                let t2 = typ_of_node(
+                    bctx,
+                    collected_ownership_hints,
+                    args[1].span,
+                    &args[1].hir_id,
+                    true,
+                )?;
                 // REVIEW: there's some code that (harmlessly) uses == on types that are
                 // different in decoration; Rust would reject this, but we currently allow it:
                 let t1 = undecorate_typ(&t1);
@@ -1373,6 +1566,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 if !(types_equal(&t1, &t2)
                     || is_smt_arith(
                         bctx,
+                        collected_ownership_hints,
                         args[0].span,
                         args[1].span,
                         &args[0].hir_id,
@@ -1389,7 +1583,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             // REVIEW: mk_vir_args handles mutable ref arguments, so you can do, e.g.,
             // `x == y` where x has type `&mut T` and y has type `T`.
             // Is this intentional?
-            let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+            let vir_args = mk_vir_args(bctx, collected_ownership_hints, node_substs, f, &args)?;
             let lhs = vir_args[0].clone();
             let rhs = vir_args[1].clone();
 
@@ -1398,6 +1592,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let t = match node_substs[0].unpack() {
                     GenericArgKind::Type(ty) => mid_ty_to_vir(
                         tcx,
+                        collected_ownership_hints,
                         &bctx.ctxt.verus_items,
                         bctx.fun_id,
                         expr.span,
@@ -1407,10 +1602,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                     _ => panic!("unexpected ext_equal type argument"),
                 };
                 let vop = vir::ast::BinaryOpr::ExtEq(equ_item == &EqualityItem::ExtEqualDeep, t);
-                mk_expr(ExprX::BinaryOpr(vop, lhs, rhs))
+                mk_expr(ExprX::BinaryOpr(vop, lhs, rhs), collected_ownership_hints)
             } else {
                 let vop = BinaryOp::Eq(Mode::Spec);
-                mk_expr(ExprX::Binary(vop, lhs, rhs))
+                mk_expr(ExprX::Binary(vop, lhs, rhs), collected_ownership_hints)
             }
         }
         VerusItem::CompilableOpr(CompilableOprItem::Implies) => {
@@ -1418,9 +1613,9 @@ fn verus_item_to_vir<'tcx, 'a>(
             // Imply is marked as unimplemented! in builtin.
             record_compilable_operator(bctx, expr, CompilableOperator::Implies);
 
-            let (lhs, rhs) = mk_two_vir_args(bctx, expr.span, &args)?;
+            let (lhs, rhs) = mk_two_vir_args(bctx, collected_ownership_hints, expr.span, &args)?;
             let vop = BinaryOp::Implies;
-            mk_expr(ExprX::Binary(vop, lhs, rhs))
+            mk_expr(ExprX::Binary(vop, lhs, rhs), collected_ownership_hints)
         }
         VerusItem::BinaryOp(
             BinaryOpItem::Arith(_)
@@ -1430,7 +1625,14 @@ fn verus_item_to_vir<'tcx, 'a>(
         ) => {
             record_spec_fn_allow_proof_args(bctx, expr);
 
-            if !is_smt_arith(bctx, args[0].span, args[1].span, &args[0].hir_id, &args[1].hir_id)? {
+            if !is_smt_arith(
+                bctx,
+                collected_ownership_hints,
+                args[0].span,
+                args[1].span,
+                &args[0].hir_id,
+                &args[1].hir_id,
+            )? {
                 let t1 = bctx.types.expr_ty_adjusted(&args[0]);
                 let t2 = bctx.types.expr_ty_adjusted(&args[1]);
                 return err_span(
@@ -1442,7 +1644,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 );
             }
 
-            let (lhs, rhs) = mk_two_vir_args(bctx, expr.span, &args)?;
+            let (lhs, rhs) = mk_two_vir_args(bctx, collected_ownership_hints, expr.span, &args)?;
 
             let vop = match verus_item {
                 VerusItem::BinaryOp(BinaryOpItem::SpecOrd(spec_ord_item)) => match spec_ord_item {
@@ -1512,12 +1714,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
             };
 
-            let e = mk_expr(ExprX::Binary(vop, lhs, rhs))?;
+            let e = mk_expr(ExprX::Binary(vop, lhs, rhs), collected_ownership_hints)?;
             if matches!(
                 verus_item,
                 VerusItem::BinaryOp(BinaryOpItem::Arith(_) | BinaryOpItem::SpecArith(_))
             ) {
-                Ok(mk_ty_clip(&expr_typ()?, &e, true))
+                Ok(mk_ty_clip(&expr_typ(collected_ownership_hints)?, &e, true))
             } else {
                 Ok(e)
             }
@@ -1540,10 +1742,12 @@ fn verus_item_to_vir<'tcx, 'a>(
 
             let vir_args = args
                 .iter()
-                .map(|arg| expr_to_vir(bctx, &arg, ExprModifier::REGULAR))
+                .map(|arg| {
+                    expr_to_vir(bctx, collected_ownership_hints, &arg, ExprModifier::REGULAR)
+                })
                 .collect::<Result<Vec<_>, _>>()?;
 
-            let typ_args = mk_typ_args(bctx, node_substs, f, expr.span)?;
+            let typ_args = mk_typ_args(bctx, collected_ownership_hints, node_substs, f, expr.span)?;
             let mut typ_args = (*typ_args).clone();
             // Put the args in the order [function type, args type]
             typ_args.swap(0, 1);
@@ -1551,10 +1755,13 @@ fn verus_item_to_vir<'tcx, 'a>(
 
             let impl_paths = get_impl_paths(bctx, f, node_substs, None);
 
-            return mk_expr(ExprX::Call(
-                CallTarget::BuiltinSpecFun(bsf, typ_args, impl_paths),
-                Arc::new(vir_args),
-            ));
+            return mk_expr(
+                ExprX::Call(
+                    CallTarget::BuiltinSpecFun(bsf, typ_args, impl_paths),
+                    Arc::new(vir_args),
+                ),
+                collected_ownership_hints,
+            );
         }
         VerusItem::Vstd(_, _)
         | VerusItem::Marker(_)
@@ -1587,20 +1794,23 @@ fn get_impl_paths<'tcx>(
 
 fn extract_ensures<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     expr: &'tcx Expr<'tcx>,
 ) -> Result<HeaderExpr, VirErr> {
     let expr = skip_closure_coercion(bctx, expr);
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(closure) => {
-            let typs: Vec<Typ> = closure_param_typs(bctx, expr)?;
+            let typs: Vec<Typ> = closure_param_typs(bctx, collected_ownership_hints, expr)?;
             let body = tcx.hir().body(closure.body);
             let mut xs: Vec<VarIdent> = Vec::new();
             for param in body.params.iter() {
                 xs.push(pat_to_var(param.pat)?);
             }
             let expr = &body.value;
-            let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(bctx, e))?;
+            let args = vec_map_result(&extract_array(expr), |e| {
+                get_ensures_arg(bctx, collected_ownership_hints, e)
+            })?;
             if typs.len() == 1 && xs.len() == 1 {
                 let id_typ = Some((xs[0].clone(), typs[0].clone()));
                 Ok(Arc::new(HeaderExprX::Ensures(id_typ, Arc::new(args))))
@@ -1611,7 +1821,9 @@ fn extract_ensures<'tcx>(
             }
         }
         _ => {
-            let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(bctx, e))?;
+            let args = vec_map_result(&extract_array(expr), |e| {
+                get_ensures_arg(bctx, collected_ownership_hints, e)
+            })?;
             Ok(Arc::new(HeaderExprX::Ensures(None, Arc::new(args))))
         }
     }
@@ -1619,6 +1831,7 @@ fn extract_ensures<'tcx>(
 
 fn extract_quant<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     span: Span,
     quant: Quant,
     expr: &'tcx Expr<'tcx>,
@@ -1628,14 +1841,15 @@ fn extract_quant<'tcx>(
     match &expr.kind {
         ExprKind::Closure(closure) => {
             let body = tcx.hir().body(closure.body);
-            let typs = closure_param_typs(bctx, expr)?;
+            let typs = closure_param_typs(bctx, collected_ownership_hints, expr)?;
             assert!(typs.len() == body.params.len());
             let mut binders: Vec<VarBinder<Typ>> = Vec::new();
             for (x, t) in body.params.iter().zip(typs) {
                 binders.push(Arc::new(VarBinderX { name: pat_to_var(x.pat)?, a: t }));
             }
             let expr = &body.value;
-            let mut vir_expr = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
+            let mut vir_expr =
+                expr_to_vir(bctx, collected_ownership_hints, expr, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut vir_expr)?;
             if header.require.len() + header.ensure.len() > 0 {
                 return err_span(expr.span, "forall/ensures cannot have requires/ensures");
@@ -1652,10 +1866,11 @@ fn extract_quant<'tcx>(
 
 fn get_ensures_arg<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     expr: &Expr<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
     if matches!(bctx.types.expr_ty_adjusted(expr).kind(), TyKind::Bool) {
-        expr_to_vir(bctx, expr, ExprModifier::REGULAR)
+        expr_to_vir(bctx, collected_ownership_hints, expr, ExprModifier::REGULAR)
     } else {
         err_span(expr.span, "ensures needs a bool expression")
     }
@@ -1663,6 +1878,7 @@ fn get_ensures_arg<'tcx>(
 
 fn extract_assert_forall_by<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     span: Span,
     expr: &'tcx Expr<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
@@ -1671,14 +1887,15 @@ fn extract_assert_forall_by<'tcx>(
     match &expr.kind {
         ExprKind::Closure(closure) => {
             let body = tcx.hir().body(closure.body);
-            let typs = closure_param_typs(bctx, expr)?;
+            let typs = closure_param_typs(bctx, collected_ownership_hints, expr)?;
             assert!(body.params.len() == typs.len());
             let mut binders: Vec<VarBinder<Typ>> = Vec::new();
             for (x, t) in body.params.iter().zip(typs) {
                 binders.push(Arc::new(VarBinderX { name: pat_to_var(x.pat)?, a: t }));
             }
             let expr = &body.value;
-            let mut vir_expr = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
+            let mut vir_expr =
+                expr_to_vir(bctx, collected_ownership_hints, expr, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut vir_expr)?;
             if header.require.len() > 1 {
                 return err_span(expr.span, "assert_forall_by can have at most one requires");
@@ -1710,6 +1927,7 @@ fn extract_assert_forall_by<'tcx>(
 
 fn extract_choose<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     span: Span,
     expr: &'tcx Expr<'tcx>,
     tuple: bool,
@@ -1722,7 +1940,7 @@ fn extract_choose<'tcx>(
             let closure_body = tcx.hir().body(closure.body);
             let mut params: Vec<VarBinder<Typ>> = Vec::new();
             let mut vars: Vec<vir::ast::Expr> = Vec::new();
-            let typs = closure_param_typs(bctx, expr)?;
+            let typs = closure_param_typs(bctx, collected_ownership_hints, expr)?;
             assert!(closure_body.params.len() == typs.len());
             for (x, typ) in closure_body.params.iter().zip(typs) {
                 let name = pat_to_var(x.pat)?;
@@ -1734,7 +1952,8 @@ fn extract_choose<'tcx>(
             }
             let typs = vec_map(&params, |p| p.a.clone());
             let cond_expr = &closure_body.value;
-            let cond = expr_to_vir(bctx, cond_expr, ExprModifier::REGULAR)?;
+            let cond =
+                expr_to_vir(bctx, collected_ownership_hints, cond_expr, ExprModifier::REGULAR)?;
             let body = if tuple {
                 let typ = mk_tuple_typ(&Arc::new(typs));
                 if !vir::ast_util::types_equal(&typ, &expr_typ) {
@@ -1801,6 +2020,7 @@ fn skip_closure_coercion<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &'tcx Expr<'tcx>) ->
 
 fn mk_is_smaller_than<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     span: Span,
     args0: Vec<&'tcx Expr>,
     args1: Vec<&'tcx Expr>,
@@ -1818,9 +2038,11 @@ fn mk_is_smaller_than<'tcx>(
         let mk_bop = |op: BinaryOp, e1: vir::ast::Expr, e2: vir::ast::Expr| {
             bctx.spanned_typed_new(span, &tbool, ExprX::Binary(op, e1, e2))
         };
-        let mk_cmp = |lt: bool| -> Result<vir::ast::Expr, VirErr> {
-            let e0 = expr_to_vir(bctx, exp0, ExprModifier::REGULAR)?;
-            let e1 = expr_to_vir(bctx, exp1, ExprModifier::REGULAR)?;
+        let mk_cmp = |lt: bool,
+                      collected_ownership_hints: &mut vir::ast::OwnershipHintsX|
+         -> Result<vir::ast::Expr, VirErr> {
+            let e0 = expr_to_vir(bctx, collected_ownership_hints, exp0, ExprModifier::REGULAR)?;
+            let e1 = expr_to_vir(bctx, collected_ownership_hints, exp1, ExprModifier::REGULAR)?;
             if vir::recursion::height_is_int(&e0.typ) && vir::recursion::height_is_int(&e1.typ) {
                 if lt {
                     // 0 <= x < y
@@ -1829,7 +2051,8 @@ fn mk_is_smaller_than<'tcx>(
                     let op0 = BinaryOp::Inequality(InequalityOp::Le);
                     let cmp0 = mk_bop(op0, zero, e0);
                     let op1 = BinaryOp::Inequality(InequalityOp::Lt);
-                    let e0 = expr_to_vir(bctx, exp0, ExprModifier::REGULAR)?;
+                    let e0 =
+                        expr_to_vir(bctx, collected_ownership_hints, exp0, ExprModifier::REGULAR)?;
                     let cmp1 = mk_bop(op1, e0, e1);
                     Ok(mk_bop(BinaryOp::And, cmp0, cmp1))
                 } else {
@@ -1845,15 +2068,19 @@ fn mk_is_smaller_than<'tcx>(
             if args1.len() < args0.len() {
                 // if z0 == z1, we can ignore the extra args0:
                 // z0 < z1 || z0 == z1
-                dec_exp = mk_bop(BinaryOp::Or, mk_cmp(true)?, mk_cmp(false)?);
+                dec_exp = mk_bop(
+                    BinaryOp::Or,
+                    mk_cmp(true, collected_ownership_hints)?,
+                    mk_cmp(false, collected_ownership_hints)?,
+                );
             } else {
                 // z0 < z1
-                dec_exp = mk_cmp(true)?;
+                dec_exp = mk_cmp(true, collected_ownership_hints)?;
             }
         } else {
             // x0 < x1 || (x0 == x1 && dec_exp)
-            let and = mk_bop(BinaryOp::And, mk_cmp(false)?, dec_exp);
-            dec_exp = mk_bop(BinaryOp::Or, mk_cmp(true)?, and);
+            let and = mk_bop(BinaryOp::And, mk_cmp(false, collected_ownership_hints)?, dec_exp);
+            dec_exp = mk_bop(BinaryOp::Or, mk_cmp(true, collected_ownership_hints)?, and);
         }
     }
     return Ok(dec_exp);
@@ -1888,6 +2115,7 @@ pub(crate) fn fix_node_substs<'tcx, 'a>(
 
 fn mk_typ_args<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
     _f: DefId,
     span: Span,
@@ -1899,6 +2127,7 @@ fn mk_typ_args<'tcx>(
             GenericArgKind::Type(ty) => {
                 typ_args.push(mid_ty_to_vir(
                     tcx,
+                    collected_ownership_hints,
                     &bctx.ctxt.verus_items,
                     bctx.fun_id,
                     span,
@@ -1921,6 +2150,7 @@ fn mk_typ_args<'tcx>(
 
 fn mk_vir_args<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     node_substs: &rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
     f: DefId,
     args: &Vec<&'tcx Expr<'tcx>>,
@@ -1937,12 +2167,17 @@ fn mk_vir_args<'tcx>(
                 _ => false,
             };
             if is_mut_ref_param {
-                let expr =
-                    expr_to_vir(bctx, arg, ExprModifier { deref_mut: true, addr_of_mut: true })?;
+                let expr = expr_to_vir(
+                    bctx,
+                    collected_ownership_hints,
+                    arg,
+                    ExprModifier { deref_mut: true, addr_of_mut: true },
+                )?;
                 Ok(bctx.spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
             } else {
                 expr_to_vir(
                     bctx,
+                    collected_ownership_hints,
                     arg,
                     is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(arg), ExprModifier::REGULAR)?,
                 )
@@ -1953,21 +2188,23 @@ fn mk_vir_args<'tcx>(
 
 fn mk_one_vir_arg<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     span: Span,
     args: &Vec<&'tcx Expr<'tcx>>,
 ) -> Result<vir::ast::Expr, VirErr> {
     unsupported_err_unless!(args.len() == 1, span, "expected 1 argument", &args);
-    expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)
+    expr_to_vir(bctx, collected_ownership_hints, &args[0], ExprModifier::REGULAR)
 }
 
 fn mk_two_vir_args<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     span: Span,
     args: &Vec<&'tcx Expr<'tcx>>,
 ) -> Result<(vir::ast::Expr, vir::ast::Expr), VirErr> {
     unsupported_err_unless!(args.len() == 2, span, "expected 2 arguments", &args);
-    let e0 = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
-    let e1 = expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?;
+    let e0 = expr_to_vir(bctx, collected_ownership_hints, &args[0], ExprModifier::REGULAR)?;
+    let e1 = expr_to_vir(bctx, collected_ownership_hints, &args[1], ExprModifier::REGULAR)?;
     Ok((e0, e1))
 }
 
@@ -1988,6 +2225,7 @@ fn get_string_lit_arg<'tcx>(
 
 pub(crate) fn check_variant_field<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     span: Span,
     adt_arg: &'tcx Expr<'tcx>,
     variant_name: &String,
@@ -2007,7 +2245,15 @@ pub(crate) fn check_variant_field<'tcx>(
         }
     };
 
-    let vir_adt_ty = mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &ty, false)?;
+    let vir_adt_ty = mid_ty_to_vir(
+        tcx,
+        collected_ownership_hints,
+        &bctx.ctxt.verus_items,
+        bctx.fun_id,
+        span,
+        &ty,
+        false,
+    )?;
     let adt_path = match &*vir_adt_ty {
         TypX::Datatype(path, _, _) => path.clone(),
         _ => {
@@ -2049,10 +2295,18 @@ pub(crate) fn check_variant_field<'tcx>(
             };
 
             let field_ty = field.ty(tcx, substs);
-            let vir_field_ty =
-                mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &field_ty, false)?;
+            let vir_field_ty = mid_ty_to_vir(
+                tcx,
+                collected_ownership_hints,
+                &bctx.ctxt.verus_items,
+                bctx.fun_id,
+                span,
+                &field_ty,
+                false,
+            )?;
             let vir_expected_field_ty = mid_ty_to_vir(
                 tcx,
+                collected_ownership_hints,
                 &bctx.ctxt.verus_items,
                 bctx.fun_id,
                 span,
@@ -2072,6 +2326,7 @@ pub(crate) fn check_variant_field<'tcx>(
 
 fn check_union_field<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     span: Span,
     adt_arg: &'tcx Expr<'tcx>,
     field_name: &String,
@@ -2103,15 +2358,37 @@ fn check_union_field<'tcx>(
     };
 
     let field_ty = field.ty(tcx, substs);
-    let vir_field_ty =
-        mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &field_ty, false)?;
-    let vir_expected_field_ty =
-        mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &expected_field_typ, false)?;
+    let vir_field_ty = mid_ty_to_vir(
+        tcx,
+        collected_ownership_hints,
+        &bctx.ctxt.verus_items,
+        bctx.fun_id,
+        span,
+        &field_ty,
+        false,
+    )?;
+    let vir_expected_field_ty = mid_ty_to_vir(
+        tcx,
+        collected_ownership_hints,
+        &bctx.ctxt.verus_items,
+        bctx.fun_id,
+        span,
+        &expected_field_typ,
+        false,
+    )?;
     if !types_equal(&vir_field_ty, &vir_expected_field_ty) {
         return err_span(span, "field has the wrong type");
     }
 
-    let vir_adt_ty = mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &ty, false)?;
+    let vir_adt_ty = mid_ty_to_vir(
+        tcx,
+        collected_ownership_hints,
+        &bctx.ctxt.verus_items,
+        bctx.fun_id,
+        span,
+        &ty,
+        false,
+    )?;
     let adt_path = match &*vir_adt_ty {
         TypX::Datatype(path, _, _) => path.clone(),
         _ => {

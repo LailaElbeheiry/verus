@@ -950,6 +950,7 @@ pub fn function_to_sst(
         exec_proof_check,
         recommends_check,
         safe_api_check,
+        ownership_hints: function.x.ownership_hints.clone(),
     };
     Ok(function.new_x(functionx))
 }

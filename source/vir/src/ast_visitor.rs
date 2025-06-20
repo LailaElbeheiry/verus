@@ -651,6 +651,7 @@ where
         attrs: _,
         body,
         extra_dependencies: _,
+        ownership_hints: _,
     } = &function.x;
 
     map.push_scope(true);
@@ -1266,6 +1267,7 @@ where
         attrs,
         body,
         extra_dependencies,
+        ownership_hints,
     } = &function.x;
     let name = name.clone();
     let proxy = proxy.clone();
@@ -1399,6 +1401,7 @@ where
         attrs,
         body,
         extra_dependencies,
+        ownership_hints: ownership_hints.clone(),
     };
     Ok(Spanned::new(function.span.clone(), functionx))
 }

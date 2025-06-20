@@ -15,11 +15,14 @@ pub(crate) enum RevealHideResult {
 
 pub(crate) fn handle_reveal_hide<'ctxt>(
     ctxt: &crate::context::Context<'ctxt>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     expr: &Expr<'ctxt>,
     args_len: usize,
     args: &Vec<&Expr<'ctxt>>,
     tcx: rustc_middle::ty::TyCtxt<'ctxt>,
-    mk_expr: Option<impl Fn(ExprX) -> Result<vir::ast::Expr, vir::ast::VirErr>>,
+    mk_expr: Option<
+        impl Fn(ExprX, &mut vir::ast::OwnershipHintsX) -> Result<vir::ast::Expr, vir::ast::VirErr>,
+    >,
 ) -> Result<RevealHideResult, vir::ast::VirErr> {
     unsupported_err_unless!(args_len == 2, expr.span, "expected reveal", &args);
     let ExprKind::Block(block, None) = args[0].kind else {
@@ -135,9 +138,9 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
     if let Some(mk_expr) = mk_expr {
         (if fuel_n == 0 {
             let header = Arc::new(HeaderExprX::Hide(fun));
-            mk_expr(ExprX::Header(header))
+            mk_expr(ExprX::Header(header), collected_ownership_hints)
         } else {
-            mk_expr(ExprX::Fuel(fun, fuel_n, is_broadcast_use))
+            mk_expr(ExprX::Fuel(fun, fuel_n, is_broadcast_use), collected_ownership_hints)
         })
         .map(RevealHideResult::Expr)
     } else {

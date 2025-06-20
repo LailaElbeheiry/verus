@@ -31,6 +31,7 @@ use vir::def::field_ident_from_rust;
 fn check_variant_data<'tcx, 'fd>(
     span: Span,
     ctxt: &Context<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     item_id: &ItemId,
     name: &Ident,
     variant_data_opt: Option<&'tcx rustc_hir::VariantData<'tcx>>,
@@ -85,6 +86,7 @@ where
 
         let typ = mid_ty_to_vir(
             ctxt.tcx,
+            collected_ownership_hints,
             &ctxt.verus_items,
             item_id.owner_id.to_def_id(),
             span,
@@ -156,9 +158,12 @@ pub(crate) fn check_item_struct<'tcx>(
         );
     }
 
+    let mut collected_ownership_hints = vir::ast::OwnershipHintsX::default();
+
     let def_id = id.owner_id.to_def_id();
     let (typ_params, typ_bounds) = check_generics_bounds_with_polarity(
         ctxt.tcx,
+        &mut collected_ownership_hints,
         &ctxt.verus_items,
         generics.span,
         Some(generics),
@@ -169,6 +174,8 @@ pub(crate) fn check_item_struct<'tcx>(
     )?;
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
     let name = path.segments.last().expect("unexpected struct path");
+
+    let mut collected_ownership_hints = vir::ast::OwnershipHintsX::default();
 
     let variant_name = name.clone();
     let (variant, transparency) = if vattrs.external_body {
@@ -182,6 +189,7 @@ pub(crate) fn check_item_struct<'tcx>(
         let (variant, inner_vis) = check_variant_data(
             span,
             ctxt,
+            &mut collected_ownership_hints,
             id,
             &variant_name,
             Some(variant_data),
@@ -205,7 +213,12 @@ pub(crate) fn check_item_struct<'tcx>(
         mode,
         ext_equal: vattrs.ext_equal,
         user_defined_invariant_fn: None,
-        sized_constraint: get_sized_constraint(span, ctxt, &adt_def)?,
+        sized_constraint: get_sized_constraint(
+            span,
+            ctxt,
+            &mut collected_ownership_hints,
+            &adt_def,
+        )?,
     };
     vir.datatypes.push(ctxt.spanned_new(span, datatype));
     Ok(())
@@ -244,9 +257,12 @@ pub(crate) fn check_item_enum<'tcx>(
         return err_span(span, "`external_fn_specification` attribute not supported here");
     }
 
+    let mut collected_ownership_hints = vir::ast::OwnershipHintsX::default();
+
     let def_id = id.owner_id.to_def_id();
     let (typ_params, typ_bounds) = check_generics_bounds_with_polarity(
         ctxt.tcx,
+        &mut collected_ownership_hints,
         &ctxt.verus_items,
         generics.span,
         Some(generics),
@@ -265,6 +281,7 @@ pub(crate) fn check_item_enum<'tcx>(
         let (variant, total_vis2) = check_variant_data(
             variant.span,
             ctxt,
+            &mut collected_ownership_hints,
             id,
             &variant_name,
             Some(&variant.data),
@@ -294,7 +311,12 @@ pub(crate) fn check_item_enum<'tcx>(
             mode: get_mode(Mode::Exec, attrs),
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
-            sized_constraint: get_sized_constraint(span, ctxt, &adt_def)?,
+            sized_constraint: get_sized_constraint(
+                span,
+                ctxt,
+                &mut collected_ownership_hints,
+                &adt_def,
+            )?,
         },
     ));
     Ok(())
@@ -334,9 +356,12 @@ pub(crate) fn check_item_union<'tcx>(
         }
     }
 
+    let mut collected_ownership_hints = vir::ast::OwnershipHintsX::default();
+
     let def_id = id.owner_id.to_def_id();
     let (typ_params, typ_bounds) = check_generics_bounds_with_polarity(
         ctxt.tcx,
+        &mut collected_ownership_hints,
         &ctxt.verus_items,
         generics.span,
         Some(generics),
@@ -368,7 +393,15 @@ pub(crate) fn check_item_union<'tcx>(
             total_vis = total_vis.join(&vis);
 
             let field_ty = ctxt.tcx.type_of(field_def.did).skip_binder();
-            let typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, def_id, span, &field_ty, false)?;
+            let typ = mid_ty_to_vir(
+                ctxt.tcx,
+                &mut collected_ownership_hints,
+                &ctxt.verus_items,
+                def_id,
+                span,
+                &field_ty,
+                false,
+            )?;
 
             let field = (typ, Mode::Exec, vis);
             let variant = Variant {
@@ -394,7 +427,12 @@ pub(crate) fn check_item_union<'tcx>(
             mode: get_mode(Mode::Exec, attrs),
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
-            sized_constraint: get_sized_constraint(span, ctxt, &adt_def)?,
+            sized_constraint: get_sized_constraint(
+                span,
+                ctxt,
+                &mut collected_ownership_hints,
+                &adt_def,
+            )?,
         },
     ));
     Ok(())
@@ -403,6 +441,7 @@ pub(crate) fn check_item_union<'tcx>(
 fn get_sized_constraint<'tcx>(
     span: Span,
     ctxt: &Context<'tcx>,
+    collected_ownership_hints: &mut vir::ast::OwnershipHintsX,
     adt_def: &AdtDef<'tcx>,
 ) -> Result<Option<vir::ast::Typ>, VirErr> {
     // This is where we get the 'sized_constraint', the type that is used to determine if
@@ -510,6 +549,7 @@ fn get_sized_constraint<'tcx>(
 
     Ok(Some(mid_ty_to_vir(
         ctxt.tcx,
+        collected_ownership_hints,
         &ctxt.verus_items,
         adt_def.def_id(),
         span,
@@ -626,10 +666,12 @@ pub(crate) fn check_item_external<'tcx>(
     }
 
     // Turn it into VIR
+    let mut collected_ownership_hints = vir::ast::OwnershipHintsX::default();
 
     let def_id = id.owner_id.to_def_id();
     let (typ_params, typ_bounds) = check_generics_bounds_with_polarity(
         ctxt.tcx,
+        &mut collected_ownership_hints,
         &ctxt.verus_items,
         generics.span,
         Some(generics),
@@ -678,7 +720,12 @@ pub(crate) fn check_item_external<'tcx>(
             mode,
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
-            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def)?,
+            sized_constraint: get_sized_constraint(
+                span,
+                ctxt,
+                &mut collected_ownership_hints,
+                external_adt_def,
+            )?,
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
     } else if external_adt_def.is_struct() {
@@ -686,6 +733,7 @@ pub(crate) fn check_item_external<'tcx>(
         let (variant, inner_vis) = check_variant_data(
             span,
             ctxt,
+            &mut collected_ownership_hints,
             id,
             &variant_name,
             None,
@@ -715,7 +763,12 @@ pub(crate) fn check_item_external<'tcx>(
             mode,
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
-            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def)?,
+            sized_constraint: get_sized_constraint(
+                span,
+                ctxt,
+                &mut collected_ownership_hints,
+                external_adt_def,
+            )?,
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
     } else {
@@ -731,6 +784,7 @@ pub(crate) fn check_item_external<'tcx>(
             let (variant, total_vis2) = check_variant_data(
                 span,
                 ctxt,
+                &mut collected_ownership_hints,
                 id,
                 &variant_name,
                 None,
@@ -765,7 +819,12 @@ pub(crate) fn check_item_external<'tcx>(
             mode,
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
-            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def)?,
+            sized_constraint: get_sized_constraint(
+                span,
+                ctxt,
+                &mut collected_ownership_hints,
+                external_adt_def,
+            )?,
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
     }
