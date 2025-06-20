@@ -1984,6 +1984,7 @@ impl Verifier {
                 &self.args.log_args.vir_log_option,
             );
         }
+        // TODO(ownership) this is probably a good place to perform the ownership automation analysis
         let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
 
         let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
