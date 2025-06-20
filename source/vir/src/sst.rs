@@ -210,24 +210,38 @@ pub enum StmX {
 // poly.rs uses the specific kind of each local to decide on a poly/native type for the local
 #[derive(Debug, Clone, Copy, ToDebugSNode)]
 pub enum LocalDeclKind {
-    Param { mutable: bool },
+    /// A function parameter
+    Param {
+        mutable: bool,
+        mode: Mode,
+    },
     Return,
-    StmtLet { mutable: bool },
-    // temp var inherits kind of the initializer used to assign to it:
-    TempViaAssign,
-    Decreases,
-    StmCallArg { native: bool },
-    Assert,
-    AssertByVar { native: bool },
-    LetBinder,
-    QuantBinder,
-    ChooseBinder,
-    ClosureBinder,
-    OpenInvariantBinder,
+    /// A variable introduced by a let statement
+    StmtLet {
+        mutable: bool,
+        mode: Option<Mode>,
+    },
+    /// NOTE: temp var inherits kind of the initializer used to assign to it:
+    TempViaAssign {
+        demote_to_spec: bool,
+    },
+    Decreases, // always spec
+    StmCallArg {
+        native: bool,
+    },
+    Assert, // always spec
+    AssertByVar {
+        native: bool,
+    }, // always spec
+    LetBinder, // only appears in `--expand-errors`
+    QuantBinder, // always spec
+    ChooseBinder, // always spec
+    ClosureBinder, // always spec
+    OpenInvariantBinder, // always spec
     ExecClosureId,
     ExecClosureParam,
     ExecClosureRet,
-    Nondeterministic,
+    Nondeterministic, // always spec
 }
 
 pub type LocalDecl = Arc<LocalDeclX>;

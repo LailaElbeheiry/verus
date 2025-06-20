@@ -295,7 +295,11 @@ impl<'a> State<'a> {
     }
 
     fn declare_temp_assign(&mut self, span: &Span, typ: &Typ) -> (VarIdent, Exp) {
-        self.declare_temp_var_stm(span, typ, LocalDeclKind::TempViaAssign)
+        self.declare_temp_var_stm(span, typ, LocalDeclKind::TempViaAssign { demote_to_spec: false })
+    }
+
+    fn declare_temp_assign_demote_to_spec(&mut self, span: &Span, typ: &Typ) -> (VarIdent, Exp) {
+        self.declare_temp_var_stm(span, typ, LocalDeclKind::TempViaAssign { demote_to_spec: true })
     }
 
     pub(crate) fn declare_params(&mut self, params: &Pars) {
@@ -307,7 +311,7 @@ impl<'a> State<'a> {
                 self.declare_var_stm(
                     name,
                     &param.x.typ,
-                    LocalDeclKind::Param { mutable: false },
+                    LocalDeclKind::Param { mutable: false, mode: param.x.mode },
                     false,
                 );
             }
@@ -2122,7 +2126,9 @@ pub(crate) fn expr_to_stm_opt(
 
             // Assign it to a constant tmp variable to ensure it is constant
             // across the entire block. sst_to_air also relies on this.
-            let (inv_tmp_id, inv_tmp_var) = state.declare_temp_assign(&big_inv_exp.span, &inv.typ);
+
+            let (inv_tmp_id, inv_tmp_var) =
+                state.declare_temp_assign_demote_to_spec(&big_inv_exp.span, &inv.typ);
             stms0.push(init_var(&big_inv_exp.span, &inv_tmp_id, &big_inv_exp));
 
             // Declare the inner_tmp variable
@@ -2376,7 +2382,7 @@ fn stmt_to_stm(
             let (stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
             Ok((stms, exp, None))
         }
-        StmtX::Decl { pattern, mode: _, init, els } => {
+        StmtX::Decl { pattern, mode, init, els } => {
             if els.is_some() {
                 panic!("let-else should be simplified in ast_simpllify {:?}.", stmt)
             }
@@ -2391,7 +2397,7 @@ fn stmt_to_stm(
             let decl = Arc::new(LocalDeclX {
                 ident,
                 typ: typ.clone(),
-                kind: LocalDeclKind::StmtLet { mutable: *mutable },
+                kind: LocalDeclKind::StmtLet { mutable: *mutable, mode: *mode },
             });
 
             // First check if the initializer needs to be translate to a Call instead

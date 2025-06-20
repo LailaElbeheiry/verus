@@ -778,10 +778,10 @@ pub fn sst_int_literal_bigint(span: &Span, i: num_bigint::BigInt) -> Exp {
 impl LocalDeclKind {
     pub fn is_mutable(&self) -> bool {
         match self {
-            LocalDeclKind::Param { mutable } => *mutable,
-            LocalDeclKind::StmtLet { mutable } => *mutable,
+            LocalDeclKind::Param { mutable, mode: _ } => *mutable,
+            LocalDeclKind::StmtLet { mutable, mode: _ } => *mutable,
             LocalDeclKind::Return => false,
-            LocalDeclKind::TempViaAssign => false,
+            LocalDeclKind::TempViaAssign { demote_to_spec: _ } => false,
             LocalDeclKind::Decreases => false,
             LocalDeclKind::StmCallArg { native: _ } => false,
             LocalDeclKind::Assert => false,

@@ -708,7 +708,7 @@ pub fn func_def_to_sst(
         state.declare_var_stm(
             &param.x.name,
             &param.x.typ,
-            LocalDeclKind::Param { mutable: param.x.is_mut },
+            LocalDeclKind::Param { mutable: param.x.is_mut, mode: param.x.mode },
             false,
         );
     }

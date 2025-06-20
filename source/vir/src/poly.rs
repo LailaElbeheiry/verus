@@ -982,7 +982,7 @@ fn update_temp_locals(
     updated_temps: &mut HashSet<VarIdent>,
 ) {
     for l in locals.iter_mut() {
-        if matches!(l.kind, LocalDeclKind::TempViaAssign) {
+        if matches!(l.kind, LocalDeclKind::TempViaAssign { demote_to_spec: _ }) {
             if !state.remaining_temps.contains(&l.ident) && !updated_temps.contains(&l.ident) {
                 let typ = state.temp_types[&l.ident].clone();
                 Arc::make_mut(l).typ = typ;
@@ -1039,12 +1039,11 @@ fn visit_func_check_sst(
             | (LocalDeclKind::ExecClosureParam, _, _)
             | (LocalDeclKind::Nondeterministic, _, _)
             | (LocalDeclKind::ExecClosureRet, _, _) => coerce_typ_to_native(ctx, &l.typ),
-            (LocalDeclKind::TempViaAssign, _, _) | (LocalDeclKind::Decreases, _, _) => {
-                l.typ.clone()
-            }
+            (LocalDeclKind::TempViaAssign { demote_to_spec: _ }, _, _)
+            | (LocalDeclKind::Decreases, _, _) => l.typ.clone(),
         };
         match l.kind {
-            LocalDeclKind::TempViaAssign => {
+            LocalDeclKind::TempViaAssign { demote_to_spec: _ } => {
                 state.remaining_temps.insert(l.ident.clone());
             }
             _ => {
