@@ -23,7 +23,7 @@ fn free_vars_exp_scope(
     allow_unfinalized: bool,
 ) {
     crate::sst_visitor::exp_visitor_dfs::<(), _>(exp, scope_map, &mut |e, scope_map| {
-        match &e.x {
+        match e.e() {
             ExpX::Var(x) | ExpX::VarLoc(x) if !scope_map.contains_key(x) => {
                 vars.insert(x.clone(), e.typ.clone());
             }
@@ -124,7 +124,7 @@ fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
                         .insert(rename.clone(), ())
                         .expect("subst_rename_binders free_vars");
                     let typ = f_typ(&b.a);
-                    let var = SpannedTyped::new(span, &typ, ExpX::Var(rename.clone()));
+                    let var = SpannedTyped::new_tagged(span, &typ, ExpX::Var(rename.clone()));
                     state.substs.insert(unique, var).expect("subst_rename_binders substs");
                     break name;
                 }
@@ -140,9 +140,9 @@ fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
 
 fn subst_exp_rec(ctxt: &SubstCtxt, state: &mut SubstState, exp: &Exp) -> Exp {
     let typ = subst_typ(&ctxt.typ_substs, &exp.typ);
-    let mk_exp = |e: ExpX| SpannedTyped::new(&exp.span, &typ, e);
+    let mk_exp = |e: ExpX| SpannedTyped::new_tagged(&exp.span, &typ, e);
     let ft = |t: &Typ| subst_typ(&ctxt.typ_substs, t);
-    match &exp.x {
+    match exp.e() {
         ExpX::Unary(UnaryOp::MustBeFinalized, _) if !ctxt.allow_unfinalized => {
             // Var won't match binders if we're not finalized
             // (special case allow_unfinalized = true for type-only substitution)
@@ -231,7 +231,7 @@ fn subst_exp_rec(ctxt: &SubstCtxt, state: &mut SubstState, exp: &Exp) -> Exp {
             let e1 = subst_exp_rec(ctxt, state, e1);
             state.substs.pop_scope();
             state.free_vars.pop_scope();
-            SpannedTyped::new(&exp.span, &typ, ExpX::Bind(bnd, e1))
+            SpannedTyped::new_tagged(&exp.span, &typ, ExpX::Bind(bnd, e1))
         }
         ExpX::ArrayLiteral(exprs) => {
             let mut new_exprs: Vec<Exp> = Vec::new();
@@ -356,7 +356,7 @@ impl ExpX {
             VarAt(id, _at) => (format!("old({})", user_local_name(id)), 99),
             StaticVar(fun) => (format!("{}", fun.path.segments.last().unwrap()), 99),
             Loc(exp) => {
-                return exp.x.to_string_prec(global, precedence);
+                return exp.e().to_string_prec(global, precedence);
             }
             Call(cf @ (CallFun::Fun(fun, _) | CallFun::Recursive(fun)), _, exps) => {
                 let (zero_args, is_method) = match global.fun_attrs.get(fun) {
@@ -373,11 +373,11 @@ impl ExpX {
                 let fun_name = fun.path.segments.last().unwrap();
 
                 if is_method && exps.len() > 0 {
-                    let receiver = exps[0].x.to_user_string(global);
+                    let receiver = exps[0].e().to_user_string(global);
                     let args = exps
                         .iter()
                         .skip(1)
-                        .map(|e| e.x.to_user_string(global))
+                        .map(|e| e.e().to_user_string(global))
                         .collect::<Vec<_>>()
                         .join(", ");
                     (format!("{}.{}({})", receiver, fun_name, args), 90)
@@ -386,7 +386,7 @@ impl ExpX {
                         "".to_string()
                     } else {
                         exps.iter()
-                            .map(|e| e.x.to_user_string(global))
+                            .map(|e| e.e().to_user_string(global))
                             .collect::<Vec<_>>()
                             .join(", ")
                     };
@@ -394,8 +394,11 @@ impl ExpX {
                 }
             }
             Call(CallFun::InternalFun(func), _, exps) => {
-                let args =
-                    exps.iter().map(|e| e.x.to_user_string(global)).collect::<Vec<_>>().join(", ");
+                let args = exps
+                    .iter()
+                    .map(|e| e.e().to_user_string(global))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 (format!("{:?}({})", func, args), 90)
             }
             ExecFnByName(func) => (format!("{:?}", func), 99),
@@ -408,56 +411,56 @@ impl ExpX {
             NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => ("no_in".to_string(), 99),
             Unary(op, exp) => match op {
                 UnaryOp::Not | UnaryOp::BitNot(_) => {
-                    (format!("!{}", exp.x.to_string_prec(global, 99)), 90)
+                    (format!("!{}", exp.e().to_string_prec(global, 99)), 90)
                 }
-                UnaryOp::Clip { .. } => (format!("clip({})", exp.x.to_user_string(global)), 99),
+                UnaryOp::Clip { .. } => (format!("clip({})", exp.e().to_user_string(global)), 99),
                 UnaryOp::HeightTrigger => {
-                    (format!("height_trigger({})", exp.x.to_user_string(global)), 99)
+                    (format!("height_trigger({})", exp.e().to_user_string(global)), 99)
                 }
-                UnaryOp::StrLen => (format!("{}.len()", exp.x.to_string_prec(global, 99)), 90),
+                UnaryOp::StrLen => (format!("{}.len()", exp.e().to_string_prec(global, 99)), 90),
                 UnaryOp::StrIsAscii => {
-                    (format!("{}.is_ascii()", exp.x.to_string_prec(global, 99)), 90)
+                    (format!("{}.is_ascii()", exp.e().to_string_prec(global, 99)), 90)
                 }
                 UnaryOp::Trigger(..)
                 | UnaryOp::CoerceMode { .. }
                 | UnaryOp::MustBeFinalized
                 | UnaryOp::MustBeElaborated => {
-                    return exp.x.to_string_prec(global, precedence);
+                    return exp.e().to_string_prec(global, precedence);
                 }
                 UnaryOp::InferSpecForLoopIter { .. } => {
-                    (format!("InferSpecForLoopIter({})", exp.x.to_string_prec(global, 99)), 0)
+                    (format!("InferSpecForLoopIter({})", exp.e().to_string_prec(global, 99)), 0)
                 }
                 UnaryOp::CastToInteger => {
-                    (format!("{} as int", exp.x.to_user_string(global)), precedence)
+                    (format!("{} as int", exp.e().to_user_string(global)), precedence)
                 }
             },
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;
                 match op {
                     Box(_) | Unbox(_) => {
-                        return exp.x.to_string_prec(global, precedence);
+                        return exp.e().to_string_prec(global, precedence);
                     }
                     HasType(t) => {
-                        (format!("has_type({}, {:?})", exp.x.to_user_string(global), t), 99)
+                        (format!("has_type({}, {:?})", exp.e().to_user_string(global), t), 99)
                     }
                     IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits, _mode) => {
                         (format!("usize::BITS"), 99)
                     }
                     IntegerTypeBound(kind, mode) => {
-                        (format!("{:?}.{:?}({})", kind, mode, exp.x.to_user_string(global)), 99)
+                        (format!("{:?}.{:?}({})", kind, mode, exp.e().to_user_string(global)), 99)
                     }
                     IsVariant { datatype: _, variant } => {
                         let (prec_exp, prec_left, _prec_right) = prec_of_in();
                         (
-                            format!("{} is {}", exp.x.to_string_prec(global, prec_left), variant),
+                            format!("{} is {}", exp.e().to_string_prec(global, prec_left), variant),
                             prec_exp,
                         )
                     }
                     Field(field) => {
-                        (format!("{}.{}", exp.x.to_user_string(global), field.field), 99)
+                        (format!("{}.{}", exp.e().to_user_string(global), field.field), 99)
                     }
                     CustomErr(_msg) => {
-                        (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
+                        (format!("with_diagnostic({})", exp.e().to_user_string(global)), 99)
                     }
                 }
             }
@@ -467,8 +470,8 @@ impl ExpX {
                 use BinaryOp::*;
                 use BitwiseOp::*;
                 use InequalityOp::*;
-                let left = e1.x.to_string_prec(global, prec_left);
-                let right = e2.x.to_string_prec(global, prec_right);
+                let left = e1.e().to_string_prec(global, prec_left);
+                let right = e2.e().to_string_prec(global, prec_right);
                 let op_str = match op {
                     And => "&&",
                     Or => "||",
@@ -501,7 +504,7 @@ impl ExpX {
                     ArrayIndex => "ignored", // This is a non-inline BinaryOp, so it needs special handling below
                 };
                 if let BinaryOp::StrGetChar = op {
-                    (format!("{}.get_char({})", left, e2.x.to_user_string(global)), prec_exp)
+                    (format!("{}.get_char({})", left, e2.e().to_user_string(global)), prec_exp)
                 } else if let HeightCompare { .. } = op {
                     (format!("height_compare({left}, {right})"), prec_exp)
                 } else if let ArrayIndex = op {
@@ -513,17 +516,17 @@ impl ExpX {
             BinaryOpr(crate::ast::BinaryOpr::ExtEq(deep, _), e1, e2) => {
                 let (prec_exp, prec_left, prec_right) =
                     BinaryOp::Eq(Mode::Spec).prec_of_binary_op();
-                let left = e1.x.to_string_prec(global, prec_left);
-                let right = e2.x.to_string_prec(global, prec_right);
+                let left = e1.e().to_string_prec(global, prec_left);
+                let right = e2.e().to_string_prec(global, prec_right);
                 let op_str = if *deep { "=~~=" } else { "=~=" };
                 (format!("{} {} {}", left, op_str, right), prec_exp)
             }
             If(e1, e2, e3) => (
                 format!(
                     "if {} {{ {} }} else {{ {} }}",
-                    e1.x.to_user_string(global),
-                    e2.x.to_user_string(global),
-                    e3.x.to_user_string(global)
+                    e1.e().to_user_string(global),
+                    e2.e().to_user_string(global),
+                    e3.e().to_user_string(global)
                 ),
                 99,
             ),
@@ -536,12 +539,12 @@ impl ExpX {
                                 format!(
                                     "{} = {}",
                                     user_local_name(&b.name),
-                                    b.a.x.to_user_string(global)
+                                    b.a.e().to_user_string(global)
                                 )
                             })
                             .collect::<Vec<_>>()
                             .join(", ");
-                        format!("let {} in {}", assigns, exp.x.to_user_string(global))
+                        format!("let {} in {}", assigns, exp.e().to_user_string(global))
                     }
                     BndX::Quant(Quant { quant: q, .. }, bnds, _trigs, _) => {
                         let q_str = match q {
@@ -554,7 +557,7 @@ impl ExpX {
                             .collect::<Vec<_>>()
                             .join(", ");
 
-                        format!("({} |{}| {})", q_str, vars, exp.x.to_user_string(global))
+                        format!("({} |{}| {})", q_str, vars, exp.e().to_user_string(global))
                     }
                     BndX::Lambda(bnds, _trigs) => {
                         let assigns = bnds
@@ -562,7 +565,7 @@ impl ExpX {
                             .map(|b| format!("{}", user_local_name(&b.name)))
                             .collect::<Vec<_>>()
                             .join(", ");
-                        format!("(|{}| {})", assigns, exp.x.to_user_string(global))
+                        format!("(|{}| {})", assigns, exp.e().to_user_string(global))
                     }
                     BndX::Choose(bnds, _trigs, cond) => {
                         let vars = bnds
@@ -573,8 +576,8 @@ impl ExpX {
                         format!(
                             "(choose |{}| {}, {})",
                             vars,
-                            cond.x.to_user_string(global),
-                            exp.x.to_user_string(global)
+                            cond.e().to_user_string(global),
+                            exp.e().to_user_string(global)
                         )
                     }
                 };
@@ -594,7 +597,7 @@ impl ExpX {
                             Some(es) => {
                                 let args = es
                                     .iter()
-                                    .map(|e| e.x.to_user_string(global))
+                                    .map(|e| e.e().to_user_string(global))
                                     .collect::<Vec<_>>()
                                     .join(", ");
                                 let variant = if matches!(style, CtorPrintStyle::Parens) {
@@ -610,7 +613,7 @@ impl ExpX {
                                 let args = bnds
                                     .iter()
                                     .map(|b| {
-                                        format!("{}: {}", b.name, b.a.x.to_user_string(global))
+                                        format!("{}: {}", b.name, b.a.e().to_user_string(global))
                                     })
                                     .collect::<Vec<_>>()
                                     .join(", ");
@@ -622,7 +625,7 @@ impl ExpX {
                     CtorPrintStyle::Braces => {
                         let args = bnds
                             .iter()
-                            .map(|b| format!("{}: {}", b.name, b.a.x.to_user_string(global)))
+                            .map(|b| format!("{}: {}", b.name, b.a.e().to_user_string(global)))
                             .collect::<Vec<_>>()
                             .join(", ");
                         (format!("{} {} {} {}", variant_id, "{", args, "}"), 99)
@@ -630,13 +633,16 @@ impl ExpX {
                 }
             }
             CallLambda(e, args) => {
-                let args =
-                    args.iter().map(|e| e.x.to_user_string(global)).collect::<Vec<_>>().join(", ");
-                (format!("{}({})", e.x.to_user_string(global), args), 99)
+                let args = args
+                    .iter()
+                    .map(|e| e.e().to_user_string(global))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                (format!("{}({})", e.e().to_user_string(global), args), 99)
             }
             ArrayLiteral(es) => {
                 let v =
-                    es.iter().map(|e| e.x.to_user_string(global)).collect::<Vec<_>>().join(", ");
+                    es.iter().map(|e| e.e().to_user_string(global)).collect::<Vec<_>>().join(", ");
                 (format!("[{}]", v), 99)
             }
             Interp(e) => {
@@ -646,16 +652,16 @@ impl ExpX {
                     Seq(s) => {
                         let v = s
                             .iter()
-                            .map(|e| e.x.to_user_string(global))
+                            .map(|e| e.e().to_user_string(global))
                             .collect::<Vec<_>>()
                             .join(", ");
                         (format!("[{}]", v), 99)
                     }
-                    Closure(e, _ctx) => (format!("{}", e.x.to_user_string(global)), 99),
+                    Closure(e, _ctx) => (format!("{}", e.e().to_user_string(global)), 99),
                     Array(s) => {
                         let v = s
                             .iter()
-                            .map(|e| e.x.to_user_string(global))
+                            .map(|e| e.e().to_user_string(global))
                             .collect::<Vec<_>>()
                             .join(", ");
                         (format!("[{}]", v), 99)
@@ -670,7 +676,7 @@ impl ExpX {
 }
 
 pub fn sst_arch_word_bits(span: &Span) -> Exp {
-    SpannedTyped::new(
+    SpannedTyped::new_tagged(
         span,
         &Arc::new(TypX::Int(IntRange::Int)),
         ExpX::UnaryOpr(
@@ -701,13 +707,13 @@ fn chain_binary(span: &Span, op: BinaryOp, init: &Exp, exps: &[Exp]) -> Exp {
     }
     let mut exp = exps[0].clone();
     for e in exps.iter().skip(1) {
-        exp = SpannedTyped::new(span, &init.typ, ExpX::Binary(op, exp, e.clone()));
+        exp = SpannedTyped::new_tagged(span, &init.typ, ExpX::Binary(op, exp, e.clone()));
     }
     exp
 }
 
 pub fn sst_bool(span: &Span, b: bool) -> Exp {
-    SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Const(Constant::Bool(b)))
+    SpannedTyped::new_tagged(span, &Arc::new(TypX::Bool), ExpX::Const(Constant::Bool(b)))
 }
 
 pub fn sst_conjoin(span: &Span, exps: &Vec<Exp>) -> Exp {
@@ -716,27 +722,27 @@ pub fn sst_conjoin(span: &Span, exps: &Vec<Exp>) -> Exp {
 
 pub fn sst_and(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
     let op = BinaryOp::And;
-    SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
+    SpannedTyped::new_tagged(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
 }
 
 pub fn sst_implies(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
     let op = BinaryOp::Implies;
-    SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
+    SpannedTyped::new_tagged(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
 }
 
 pub fn sst_lt(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
     let op = BinaryOp::Inequality(InequalityOp::Lt);
-    SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
+    SpannedTyped::new_tagged(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
 }
 
 pub fn sst_le(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
     let op = BinaryOp::Inequality(InequalityOp::Le);
-    SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
+    SpannedTyped::new_tagged(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
 }
 
 pub fn sst_equal(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
     let op = BinaryOp::Eq(Mode::Spec);
-    SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
+    SpannedTyped::new_tagged(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
 }
 
 pub fn sst_equal_ext(span: &Span, e1: &Exp, e2: &Exp, ext: Option<bool>) -> Exp {
@@ -744,7 +750,7 @@ pub fn sst_equal_ext(span: &Span, e1: &Exp, e2: &Exp, ext: Option<bool>) -> Exp 
         None => sst_equal(span, e1, e2),
         Some(deep) => {
             let op = BinaryOpr::ExtEq(deep, crate::ast_util::undecorate_typ(&e1.typ));
-            SpannedTyped::new(
+            SpannedTyped::new_tagged(
                 span,
                 &Arc::new(TypX::Bool),
                 ExpX::BinaryOpr(op, e1.clone(), e2.clone()),
@@ -754,17 +760,17 @@ pub fn sst_equal_ext(span: &Span, e1: &Exp, e2: &Exp, ext: Option<bool>) -> Exp 
 }
 
 pub fn sst_not(span: &Span, e: &Exp) -> Exp {
-    match &e.x {
+    match e.e() {
         ExpX::Unary(UnaryOp::Not, e1) => e1.clone(),
         _ => {
             let op = UnaryOp::Not;
-            SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Unary(op, e.clone()))
+            SpannedTyped::new_tagged(span, &Arc::new(TypX::Bool), ExpX::Unary(op, e.clone()))
         }
     }
 }
 
 pub fn sst_int_literal(span: &Span, i: i128) -> Exp {
-    SpannedTyped::new(
+    SpannedTyped::new_tagged(
         span,
         &Arc::new(TypX::Int(IntRange::Int)),
         ExpX::Const(crate::ast_util::const_int_from_i128(i)),
@@ -772,7 +778,11 @@ pub fn sst_int_literal(span: &Span, i: i128) -> Exp {
 }
 
 pub fn sst_int_literal_bigint(span: &Span, i: num_bigint::BigInt) -> Exp {
-    SpannedTyped::new(span, &Arc::new(TypX::Int(IntRange::Int)), ExpX::Const(Constant::Int(i)))
+    SpannedTyped::new_tagged(
+        span,
+        &Arc::new(TypX::Int(IntRange::Int)),
+        ExpX::Const(Constant::Int(i)),
+    )
 }
 
 impl LocalDeclKind {
@@ -803,7 +813,7 @@ impl LocalDeclKind {
 pub fn sst_unit_value(span: &Span) -> Exp {
     let name = Dt::Tuple(0);
     let variant = crate::def::prefix_tuple_variant(0);
-    SpannedTyped::new(span, &unit_typ(), ExpX::Ctor(name, variant, Arc::new(vec![])))
+    SpannedTyped::new_tagged(span, &unit_typ(), ExpX::Ctor(name, variant, Arc::new(vec![])))
 }
 
 pub fn sst_unpack_tuple_style_ctor(expx: &ExpX) -> Option<Vec<Exp>> {
@@ -832,7 +842,7 @@ pub fn sst_unpack_tuple_style_ctor(expx: &ExpX) -> Option<Vec<Exp>> {
 pub fn sst_tuple(span: &Span, exps: &Exps) -> Exp {
     let typs = crate::util::vec_map(exps, |e| e.typ.clone());
     let tup_typ = crate::ast_util::mk_tuple_typ(&Arc::new(typs));
-    SpannedTyped::new(span, &tup_typ, sst_tuple_x(exps))
+    SpannedTyped::new_tagged(span, &tup_typ, sst_tuple_x(exps))
 }
 
 pub fn sst_tuple_x(exps: &Exps) -> ExpX {
@@ -868,7 +878,7 @@ pub(crate) fn sst_call_requires(
     let tuple_typ = crate::ast_util::mk_tuple_typ(&Arc::new(param_typs));
     let fndef_typ = Arc::new(TypX::FnDef(fun.clone(), typ_args.clone(), resolved_fun.clone()));
 
-    let fndef_value = SpannedTyped::new(span, &fndef_typ, ExpX::ExecFnByName(fun.clone()));
+    let fndef_value = SpannedTyped::new_tagged(span, &fndef_typ, ExpX::ExecFnByName(fun.clone()));
     let fndef_value = crate::poly::coerce_exp_to_poly(ctx, &fndef_value);
 
     let req_args: Vec<Exp> =
@@ -881,7 +891,7 @@ pub(crate) fn sst_call_requires(
         Arc::new(vec![fndef_typ, tuple_typ]),
         Arc::new(vec![fndef_value, args_tuple]),
     );
-    SpannedTyped::new(span, &Arc::new(TypX::Bool), expx)
+    SpannedTyped::new_tagged(span, &Arc::new(TypX::Bool), expx)
 }
 
 pub(crate) fn sst_call_ensures(
@@ -905,7 +915,7 @@ pub(crate) fn sst_call_ensures(
     let tuple_typ = crate::ast_util::mk_tuple_typ(&Arc::new(param_typs));
     let fndef_typ = Arc::new(TypX::FnDef(fun.clone(), typ_args.clone(), resolved_fun.clone()));
 
-    let fndef_value = SpannedTyped::new(span, &fndef_typ, ExpX::ExecFnByName(fun.clone()));
+    let fndef_value = SpannedTyped::new_tagged(span, &fndef_typ, ExpX::ExecFnByName(fun.clone()));
     let fndef_value = crate::poly::coerce_exp_to_poly(ctx, &fndef_value);
 
     let req_args: Vec<Exp> =
@@ -926,5 +936,5 @@ pub(crate) fn sst_call_ensures(
         Arc::new(vec![fndef_typ, tuple_typ]),
         Arc::new(vec![fndef_value, args_tuple, return_value]),
     );
-    SpannedTyped::new(span, &Arc::new(TypX::Bool), expx)
+    SpannedTyped::new_tagged(span, &Arc::new(TypX::Bool), expx)
 }

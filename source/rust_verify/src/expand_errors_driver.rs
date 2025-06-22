@@ -381,10 +381,10 @@ impl ExpandErrorsDriver {
                     let style = self.get_line_style(i);
                     let l = match intro {
                         Introduction::UnfoldFunctionDef(_fun, exp) => {
-                            vec![format!("{}", exp.x.to_user_string(&ctx.global))]
+                            vec![format!("{}", exp.e().to_user_string(&ctx.global))]
                         }
                         Introduction::SplitEquality(exp) => {
-                            vec![format!("{}", exp.x.to_user_string(&ctx.global))]
+                            vec![format!("{}", exp.e().to_user_string(&ctx.global))]
                         }
                         Introduction::Let(binders) => {
                             let mut w = vec![];
@@ -397,7 +397,7 @@ impl ExpandErrorsDriver {
                                 v.push("let ".into());
                                 v.push((*binder.name.0).clone());
                                 v.push(" = ".into());
-                                v.push(binder.a.x.to_user_string(&ctx.global));
+                                v.push(binder.a.e().to_user_string(&ctx.global));
                                 v.push(";".into());
                                 w.push(v.join(""));
                             }
@@ -416,7 +416,7 @@ impl ExpandErrorsDriver {
                             vec![v.join("")]
                         }
                         Introduction::Hypothesis(exp) => {
-                            vec![format!("{} ==>", exp.x.to_user_string(&ctx.global))]
+                            vec![format!("{} ==>", exp.e().to_user_string(&ctx.global))]
                         }
                     };
                     (l, style)
@@ -438,7 +438,7 @@ impl ExpandErrorsDriver {
                         }
                         Some(ExpandErrorsResult::Pass) => ("✔", Style::SuccessGreen),
                     };
-                    let line = format!("{} {}", exp.x.to_user_string(&ctx.global), status);
+                    let line = format!("{} {}", exp.e().to_user_string(&ctx.global), status);
                     (vec![line], style)
                 }
                 LineKind::Explanation(explanation) => (vec![explanation.clone()], Style::FailRed),

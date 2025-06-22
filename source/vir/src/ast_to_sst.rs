@@ -152,7 +152,7 @@ impl<'a> State<'a> {
     fn next_temp(&mut self, span: &Span, typ: &Typ) -> (VarIdent, Exp) {
         self.next_var += 1;
         let x = crate::def::new_temp_var(self.next_var);
-        (x.clone(), SpannedTyped::new(span, typ, ExpX::Var(x.clone())))
+        (x.clone(), SpannedTyped::new_tagged(span, typ, ExpX::Var(x.clone())))
     }
 
     pub(crate) fn push_scope(&mut self) {
@@ -320,10 +320,12 @@ impl<'a> State<'a> {
 
     // Erase unused unique ids from Vars and process inline functions
     pub(crate) fn finalize_exp(&self, _ctx: &Ctx, exp: &Exp) -> Result<Exp, VirErr> {
-        let exp = map_exp_visitor(exp, &mut |exp| match &exp.x {
-            ExpX::Var(x) if self.rename_delayed.contains_key(x) => {
-                SpannedTyped::new(&exp.span, &exp.typ, ExpX::Var(self.rename_delayed[x].clone()))
-            }
+        let exp = map_exp_visitor(exp, &mut |exp| match exp.e() {
+            ExpX::Var(x) if self.rename_delayed.contains_key(x) => SpannedTyped::new_tagged(
+                &exp.span,
+                &exp.typ,
+                ExpX::Var(self.rename_delayed[x].clone()),
+            ),
             ExpX::Unary(UnaryOp::MustBeFinalized, e1) => e1.clone(),
             _ => exp.clone(),
         });
@@ -404,7 +406,7 @@ impl<'a> State<'a> {
 }
 
 pub(crate) fn var_loc_exp(span: &Span, typ: &Typ, lhs: UniqueIdent) -> Exp {
-    SpannedTyped::new(span, typ, ExpX::VarLoc(lhs))
+    SpannedTyped::new_tagged(span, typ, ExpX::VarLoc(lhs))
 }
 
 pub(crate) fn init_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
@@ -452,16 +454,16 @@ fn function_can_be_exp(
 
 pub fn assume_false(span: &Span) -> Stm {
     let expx = ExpX::Const(Constant::Bool(false));
-    let exp = SpannedTyped::new(&span, &Arc::new(TypX::Bool), expx);
+    let exp = SpannedTyped::new_tagged(&span, &Arc::new(TypX::Bool), expx);
     Spanned::new(span.clone(), StmX::Assume(exp))
 }
 
 pub(crate) fn assume_has_typ(x: &UniqueIdent, typ: &Typ, span: &Span) -> Stm {
     let xvarx = ExpX::Var(x.clone());
     // TODO: Bool is wrong here
-    let xvar = SpannedTyped::new(span, &Arc::new(TypX::Bool), xvarx);
+    let xvar = SpannedTyped::new_tagged(span, &Arc::new(TypX::Bool), xvarx);
     let has_typx = ExpX::UnaryOpr(UnaryOpr::HasType(typ.clone()), xvar);
-    let has_typ = SpannedTyped::new(span, &Arc::new(TypX::Bool), has_typx);
+    let has_typ = SpannedTyped::new_tagged(span, &Arc::new(TypX::Bool), has_typx);
     Spanned::new(span.clone(), StmX::Assume(has_typ))
 }
 
@@ -823,7 +825,7 @@ fn find_last_span_in_expr<'x>(expr: &'x Expr, fn_span: &'x Span) -> &'x Span {
 }
 
 fn is_small_exp(exp: &Exp) -> bool {
-    match &exp.x {
+    match exp.e() {
         ExpX::Const(_) => true,
         ExpX::Var(..) | ExpX::VarAt(..) => true,
         ExpX::Old(..) => true,
@@ -836,7 +838,7 @@ fn is_small_exp(exp: &Exp) -> bool {
 }
 
 fn is_small_exp_or_loc(exp: &Exp) -> bool {
-    match &exp.x {
+    match exp.e() {
         ExpX::Loc(..) => true,
         _ => is_small_exp(exp),
     }
@@ -853,7 +855,7 @@ fn mask_set_for_call(fun: &Function, typs: &Typs, args: Arc<Vec<Exp>>) -> MaskSe
                     typs.clone(),
                     args.clone(),
                 );
-                let exp = SpannedTyped::new(&e.span, &e.typ, expx);
+                let exp = SpannedTyped::new_tagged(&e.span, &e.typ, expx);
                 inv_exps.push(exp);
             }
             match &mask_spec {
@@ -870,7 +872,7 @@ fn mask_set_for_call(fun: &Function, typs: &Typs, args: Arc<Vec<Exp>>) -> MaskSe
                 typs.clone(),
                 args.clone(),
             );
-            let exp = SpannedTyped::new(&e.span, &e.typ, expx);
+            let exp = SpannedTyped::new_tagged(&e.span, &e.typ, expx);
             MaskSet::arbitrary(&exp)
         }
     }
@@ -988,7 +990,7 @@ fn if_to_stm(
             if stms1.len() == 0 && stms2.len() == 0 {
                 // In this case, we can construct a pure expression.
                 let expx = ExpX::If(e0.clone(), e1.clone(), e2.clone());
-                let exp = SpannedTyped::new(&expr.span, &expr.typ, expx);
+                let exp = SpannedTyped::new_tagged(&expr.span, &expr.typ, expx);
                 (stms0, ReturnValue::Some(exp))
             } else {
                 // We have `if ( stms0; e0 ) { stms1; e1 } else { stms2; e2 }`.
@@ -1024,7 +1026,7 @@ pub(crate) fn expr_to_stm_opt(
     state: &mut State,
     expr: &Expr,
 ) -> Result<(Vec<Stm>, ReturnValue), VirErr> {
-    let mk_exp = |expx: ExpX| SpannedTyped::new(&expr.span, &expr.typ, expx);
+    let mk_exp = |expx: ExpX| SpannedTyped::new_tagged(&expr.span, &expr.typ, expx);
     match &expr.x {
         ExprX::Const(c) => Ok((vec![], ReturnValue::Some(mk_exp(ExpX::Const(c.clone()))))),
         ExprX::Var(x) => {
@@ -1066,7 +1068,7 @@ pub(crate) fn expr_to_stm_opt(
             let (mut stms, lhs_exp) = expr_to_stm_opt(ctx, state, lhs_expr)?;
             let lhs_exp = lhs_exp.expect_value();
             let direct_assign =
-                if matches!(lhs_exp.x, ExpX::VarLoc(_)) { Some(&lhs_exp.typ) } else { None };
+                if matches!(lhs_exp.e(), ExpX::VarLoc(_)) { Some(&lhs_exp.typ) } else { None };
             match expr_must_be_call_stm(ctx, state, direct_assign, expr2)? {
                 Some((stms2, ReturnedCall::Never)) => {
                     stms.extend(stms2.into_iter());
@@ -1123,7 +1125,7 @@ pub(crate) fn expr_to_stm_opt(
                     let (stms2, e2) = expr_to_stm_opt(ctx, state, expr2)?;
                     let e2 = unwrap_or_return_never!(e2, stms2);
                     stms.extend(stms2.into_iter());
-                    let rhs = if matches!(lhs_exp.x, ExpX::VarLoc(_)) || is_small_exp(&e2) {
+                    let rhs = if matches!(lhs_exp.e(), ExpX::VarLoc(_)) || is_small_exp(&e2) {
                         e2
                     } else {
                         let (temp_ident, temp_var) = state.declare_temp_assign(&e2.span, &e2.typ);
@@ -1220,7 +1222,7 @@ pub(crate) fn expr_to_stm_opt(
                                     typs.clone(),
                                     args,
                                 );
-                                let call = SpannedTyped::new(&expr.span, &expr.typ, call);
+                                let call = SpannedTyped::new_tagged(&expr.span, &expr.typ, call);
                                 stms.push(init_var(&expr.span, &temp_ident, &call));
                             }
                         }
@@ -1273,7 +1275,8 @@ pub(crate) fn expr_to_stm_opt(
             {
                 let unary = UnaryOpr::HasType(expr.typ.clone());
                 let has_type = ExpX::UnaryOpr(unary, exp.clone());
-                let has_type = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), has_type);
+                let has_type =
+                    SpannedTyped::new_tagged(&expr.span, &Arc::new(TypX::Bool), has_type);
                 let error = crate::messages::error(
                     &expr.span,
                     "recommendation not met: value may be out of range of the target type (use `#[verifier::truncate]` on the cast to silence this warning)",
@@ -1304,7 +1307,7 @@ pub(crate) fn expr_to_stm_opt(
                     };
                     let is_variant = ExpX::UnaryOpr(unary, exp.clone());
                     let is_variant =
-                        SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), is_variant);
+                        SpannedTyped::new_tagged(&expr.span, &Arc::new(TypX::Bool), is_variant);
                     let error = crate::messages::error(
                         &expr.span,
                         "requirement not met: to access this field, the union must be in the correct variant",
@@ -1342,7 +1345,7 @@ pub(crate) fn expr_to_stm_opt(
                     // or:
                     //   if e1 { true } else { stmts2; e2 }
                     let bx = ExpX::Const(Constant::Bool(other));
-                    let b = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), bx);
+                    let b = SpannedTyped::new_tagged(&expr.span, &Arc::new(TypX::Bool), bx);
                     let b = ReturnValue::Some(b);
                     if proceed_on {
                         Ok(if_to_stm(state, expr, stms1, &e1, stms2, &e2, vec![], &b))
@@ -1370,7 +1373,7 @@ pub(crate) fn expr_to_stm_opt(
                                     ArithOp::Add | ArithOp::Sub | ArithOp::Mul => {
                                         let unary = UnaryOpr::HasType(expr.typ.clone());
                                         let has_type = ExpX::UnaryOpr(unary, bin.clone());
-                                        let has_type = SpannedTyped::new(
+                                        let has_type = SpannedTyped::new_tagged(
                                             &expr.span,
                                             &Arc::new(TypX::Bool),
                                             has_type,
@@ -1379,9 +1382,12 @@ pub(crate) fn expr_to_stm_opt(
                                     }
                                     ArithOp::EuclideanDiv | ArithOp::EuclideanMod => {
                                         let zero = ExpX::Const(Constant::Int(BigInt::zero()));
-                                        let ne =
-                                            ExpX::Binary(BinaryOp::Ne, e2.clone(), e2.new_x(zero));
-                                        let ne = SpannedTyped::new(
+                                        let ne = ExpX::Binary(
+                                            BinaryOp::Ne,
+                                            e2.clone(),
+                                            e2.new_x_tagged(zero),
+                                        );
+                                        let ne = SpannedTyped::new_tagged(
                                             &expr.span,
                                             &Arc::new(TypX::Bool),
                                             ne,
@@ -2069,7 +2075,7 @@ pub(crate) fn expr_to_stm_opt(
                 // must be "loop", not "while"
                 if let Some((c_stm, c_exp)) = cnd {
                     // convert while into loop
-                    let not_c = c_exp.new_x(ExpX::Unary(UnaryOp::Not, c_exp.clone()));
+                    let not_c = c_exp.new_x_tagged(ExpX::Unary(UnaryOp::Not, c_exp.clone()));
                     let break_stmx = StmX::BreakOrContinue { label: None, is_break: true };
                     let break_stm = Spanned::new(c_exp.span.clone(), break_stmx);
                     let if_stm = Spanned::new(c_exp.span.clone(), StmX::If(not_c, break_stm, None));
@@ -2149,7 +2155,7 @@ pub(crate) fn expr_to_stm_opt(
                 kind: LocalDeclKind::OpenInvariantBinder,
             }));
             stms1.push(init_var(&expr.span, &ident, &arb_exp));
-            let inner_var = SpannedTyped::new(&expr.span, &inner_typ, ExpX::Var(ident));
+            let inner_var = SpannedTyped::new_tagged(&expr.span, &inner_typ, ExpX::Var(ident));
 
             // Check that the invariant namespace is not already opened
             let typ_args = get_inv_typ_args(&big_inv_exp.typ);
@@ -2333,7 +2339,11 @@ pub(crate) fn expr_to_stm_opt(
                             }
                             _ => panic!("expected BndX::Let for statement decl"),
                         };
-                        exp = SpannedTyped::new(&expr.span, &exp.typ, ExpX::Bind(bnd, exp.clone()));
+                        exp = SpannedTyped::new_tagged(
+                            &expr.span,
+                            &exp.typ,
+                            ExpX::Bind(bnd, exp.clone()),
+                        );
                     }
                     assert!(!never_return);
                     return Ok((vec![], ReturnValue::Some(exp)));
@@ -2597,14 +2607,14 @@ fn call_inv(ctx: &Ctx, outer: &Exp, inner: &Exp, typ_args: &Typs, atomicity: Inv
     let call_fun =
         CallFun::Fun(crate::def::fn_inv_name(&ctx.global.vstd_crate_name, atomicity), None);
     let expx = ExpX::Call(call_fun, typ_args.clone(), Arc::new(vec![outer.clone(), inner.clone()]));
-    SpannedTyped::new(&outer.span, &Arc::new(TypX::Bool), expx)
+    SpannedTyped::new_tagged(&outer.span, &Arc::new(TypX::Bool), expx)
 }
 
 fn call_namespace(ctx: &Ctx, arg: &Exp, typ_args: &Typs, atomicity: InvAtomicity) -> Exp {
     let call_fun =
         CallFun::Fun(crate::def::fn_namespace_name(&ctx.global.vstd_crate_name, atomicity), None);
     let expx = ExpX::Call(call_fun, typ_args.clone(), Arc::new(vec![arg.clone()]));
-    SpannedTyped::new(&arg.span, &Arc::new(TypX::Int(IntRange::Int)), expx)
+    SpannedTyped::new_tagged(&arg.span, &Arc::new(TypX::Int(IntRange::Int)), expx)
 }
 
 pub fn assert_assume_satisfies_user_defined_type_invariant(
@@ -2621,7 +2631,7 @@ pub fn assert_assume_satisfies_user_defined_type_invariant(
     };
     let call_fun = CallFun::Fun(fun.clone(), None);
     let expx = ExpX::Call(call_fun, typs, Arc::new(vec![exp.clone()]));
-    let exp = SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), expx);
+    let exp = SpannedTyped::new_tagged(&exp.span, &Arc::new(TypX::Bool), expx);
 
     if state.checking_recommends(ctx) {
         stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));

@@ -11,8 +11,8 @@ use crate::def::{
     prefix_requires, static_name, suffix_global_id, suffix_typ_param_ids,
 };
 use crate::messages::{MessageLabel, Span};
-use crate::sst::FuncCheckSst;
 use crate::sst::{BndX, ExpX, Exps, FunctionSst, ParPurpose, ParX, Pars};
+use crate::sst::{FuncCheckSst, TaggedExpX};
 use crate::sst_to_air::{
     ExprCtxt, ExprMode, exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids,
 };
@@ -802,8 +802,8 @@ pub fn func_axioms_to_air(
                 }
                 let bndx = BndX::Quant(QUANT_FORALL, Arc::new(binders), triggers.clone(), None);
                 let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), exp.clone());
-                let forall: Arc<SpannedTyped<ExpX>> =
-                    SpannedTyped::new(&span, &Arc::new(TypX::Bool), forallx);
+                let forall: Arc<SpannedTyped<TaggedExpX>> =
+                    SpannedTyped::new_tagged(&span, &Arc::new(TypX::Bool), forallx);
                 let expr_ctxt = if is_singular {
                     ExprCtxt::new_mode_singular(ExprMode::Spec, true)
                 } else {

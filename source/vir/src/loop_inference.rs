@@ -16,7 +16,7 @@ pub(crate) fn make_option_exp(opt: Option<Exp>, span: &Span, typ: &Typ) -> Exp {
             ExpX::Ctor(option_path.clone(), Arc::new("Some".to_string()), fields)
         }
     };
-    SpannedTyped::new(span, &Arc::new(option_typx), expx)
+    SpannedTyped::new_tagged(span, &Arc::new(option_typx), expx)
 }
 
 // InferSpecForLoopIter produces None if any variables in the express are modified in the loop
@@ -27,7 +27,7 @@ fn vars_unmodified(
     hint_message: &mut Option<Message>,
 ) -> bool {
     let mut map = air::scope_map::ScopeMap::new();
-    let r = crate::sst_visitor::exp_visitor_check(exp, &mut map, &mut |e: &Exp, _| match &e.x {
+    let r = crate::sst_visitor::exp_visitor_check(exp, &mut map, &mut |e: &Exp, _| match e.e() {
         ExpX::Var(x) => {
             if modified_vars.contains(x) {
                 if print_hint && hint_message.is_none() {
@@ -75,7 +75,7 @@ pub(crate) fn finalize_inv(
     hint_message: &mut Option<Message>,
 ) -> Exp {
     crate::sst_visitor::map_exp_visitor(exp, &mut |e: &Exp| {
-        match &e.x {
+        match e.e() {
             ExpX::Unary(UnaryOp::InferSpecForLoopIter { print_hint }, e_infer) => {
                 if vars_unmodified(modified_vars, e_infer, *print_hint, hint_message) {
                     // promote to Some(e)

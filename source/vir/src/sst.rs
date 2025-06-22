@@ -64,26 +64,40 @@ pub enum CallFun {
 }
 
 #[derive(Debug, Clone, ToDebugSNode)]
-struct ExpTags {
-    borrow: bool,
+pub struct ExpTags {
+    pub borrow: bool,
 }
+
+pub type Exp = Arc<SpannedTyped<TaggedExpX>>;
 
 #[derive(Debug, Clone, ToDebugSNode)]
-struct SpannedTypedTagged<X> {
-    x: SpannedTyped<X>,
-    tags: ExpTags,
+pub struct TaggedExpX {
+    pub exp: ExpX,
+    pub tags: ExpTags,
 }
 
-impl<X> std::ops::Deref for SpannedTypedTagged<X> {
-    type Target = SpannedTyped<X>;
+impl SpannedTyped<TaggedExpX> {
+    pub fn e(&self) -> &ExpX {
+        &self.x.exp
+    }
 
-    fn deref(&self) -> &Self::Target {
-        &self.x
+    pub fn new_x_tagged(&self, x: ExpX) -> Arc<SpannedTyped<TaggedExpX>> {
+        Arc::new(SpannedTyped {
+            span: self.span.clone(),
+            typ: self.typ.clone(),
+            x: TaggedExpX { exp: x, tags: ExpTags { borrow: self.x.tags.borrow } },
+        })
+    }
+
+    pub fn new_tagged(span: &Span, typ: &Typ, x: ExpX) -> Arc<SpannedTyped<TaggedExpX>> {
+        Arc::new(SpannedTyped {
+            span: span.clone(),
+            typ: typ.clone(),
+            x: TaggedExpX { exp: x, tags: ExpTags { borrow: false } },
+        })
     }
 }
 
-pub type Exp = Arc<SpannedTyped<ExpX>>;
-// TODO(automation) pub type Exp = Arc<SpannedTypedTagged<ExpX>>;
 pub type Exps = Arc<Vec<Exp>>;
 #[derive(Debug, Clone, ToDebugSNode)]
 pub enum ExpX {

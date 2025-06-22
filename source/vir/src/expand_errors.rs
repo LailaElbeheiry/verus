@@ -261,10 +261,10 @@ fn do_expansion_if_assert_id_matches(
             // 'assert' statements. In principle, we could handle substitution more
             // generally, though we'd have to handle mutation, and it might not
             // be very important.
-            if let ExpX::Var(uid) = &exp.x {
+            if let ExpX::Var(uid) = exp.e() {
                 if let Some(prev) = prev_stm {
                     if let StmX::Assign { lhs, rhs } = &prev.x {
-                        if let ExpX::VarLoc(uid2) = &lhs.dest.x {
+                        if let ExpX::VarLoc(uid2) = lhs.dest.e() {
                             if uid == uid2 {
                                 the_exp = rhs;
                             }
@@ -345,7 +345,7 @@ impl State {
             let decl = Arc::new(LocalDeclX { ident: new_name.clone(), typ: typ.clone(), kind });
             self.local_decls.push(decl);
 
-            let var_exp = SpannedTyped::new(span, &typ, ExpX::Var(new_name.clone()));
+            let var_exp = SpannedTyped::new_tagged(span, &typ, ExpX::Var(new_name.clone()));
             substs.insert(binder.name.clone(), var_exp);
 
             typ_invs.push(crate::ast_to_sst::assume_has_typ(&new_name, &typ, span));
@@ -436,7 +436,7 @@ fn expand_exp_rec(
         (stm, tree)
     };
 
-    match &exp.x {
+    match exp.e() {
         ExpX::Unary(UnaryOp::Not, e) => expand_exp_rec(ctx, ectx, state, e, did_split_yet, !negate),
         ExpX::Binary(op @ (BinaryOp::And | BinaryOp::Or | BinaryOp::Implies), e1, e2) => {
             // Treat this like an '&&' or an '==>', negating either argument appropriately.
@@ -478,7 +478,7 @@ fn expand_exp_rec(
                 return leaf(state, CanExpandFurther::Yes);
             }
 
-            let (is_neq, ext) = match &exp.x {
+            let (is_neq, ext) = match exp.e() {
                 ExpX::Binary(BinaryOp::Eq(_), ..) => (false, None),
                 ExpX::Binary(BinaryOp::Ne | BinaryOp::Xor, ..) => (true, None),
                 ExpX::BinaryOpr(BinaryOpr::ExtEq(deep, _), ..) => (false, Some(*deep)),
@@ -730,7 +730,7 @@ pub fn try_split_datatype_eq(
             if is_ctor_for_other(&e2, variant) {
                 w0.push(sst_not(
                     &e2.span,
-                    &SpannedTyped::new(
+                    &SpannedTyped::new_tagged(
                         &e2.span,
                         &bool_typ,
                         ExpX::UnaryOpr(
@@ -744,7 +744,7 @@ pub fn try_split_datatype_eq(
                 ));
                 continue;
             }
-            v.push(SpannedTyped::new(
+            v.push(SpannedTyped::new_tagged(
                 &e2.span,
                 &bool_typ,
                 ExpX::UnaryOpr(
@@ -788,7 +788,7 @@ pub fn try_split_datatype_eq(
         } else {
             sst_implies(
                 &e1.span,
-                &SpannedTyped::new(
+                &SpannedTyped::new_tagged(
                     &e2.span,
                     &bool_typ,
                     ExpX::UnaryOpr(
@@ -813,14 +813,14 @@ pub fn try_split_datatype_eq(
 pub fn field_exp(exp: &Exp, field_typ: &Typ, datatype: &Dt, variant: &Ident, field: &Ident) -> Exp {
     let e = remove_uninteresting_unary_ops(exp);
 
-    match &e.x {
+    match e.e() {
         ExpX::Ctor(_, variant_ident, fields) if variant_ident == variant => {
             return crate::ast_util::get_field(fields, field).a.clone();
         }
         _ => {}
     }
 
-    SpannedTyped::new(
+    SpannedTyped::new_tagged(
         &exp.span,
         field_typ,
         ExpX::UnaryOpr(
@@ -837,7 +837,7 @@ pub fn field_exp(exp: &Exp, field_typ: &Typ, datatype: &Dt, variant: &Ident, fie
 }
 
 fn remove_uninteresting_unary_ops(exp: &Exp) -> &Exp {
-    match &exp.x {
+    match exp.e() {
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), e)
         | ExpX::Unary(UnaryOp::Trigger(_), e) => remove_uninteresting_unary_ops(e),
         _ => exp,
@@ -847,7 +847,7 @@ fn remove_uninteresting_unary_ops(exp: &Exp) -> &Exp {
 fn variants_contradict(e1: &Exp, e2: &Exp) -> bool {
     let e1 = remove_uninteresting_unary_ops(e1);
     let e2 = remove_uninteresting_unary_ops(e2);
-    match (&e1.x, &e2.x) {
+    match (e1.e(), e2.e()) {
         (ExpX::Ctor(_, variant_ident1, _), ExpX::Ctor(_, variant_ident2, _)) => {
             variant_ident1 != variant_ident2
         }
@@ -857,7 +857,7 @@ fn variants_contradict(e1: &Exp, e2: &Exp) -> bool {
 
 fn is_no_arg_ctor(e: &Exp) -> bool {
     let e = remove_uninteresting_unary_ops(e);
-    match &e.x {
+    match e.e() {
         ExpX::Ctor(_, _variant_ident, fields) => fields.len() == 0,
         _ => false,
     }
@@ -865,7 +865,7 @@ fn is_no_arg_ctor(e: &Exp) -> bool {
 
 fn is_just_ctor(e: &Exp) -> bool {
     let e = remove_uninteresting_unary_ops(e);
-    match &e.x {
+    match e.e() {
         ExpX::Ctor(_, _variant_ident, _) => true,
         _ => false,
     }
@@ -873,7 +873,7 @@ fn is_just_ctor(e: &Exp) -> bool {
 
 fn is_ctor_for(e: &Exp, variant: &Variant) -> bool {
     let e = remove_uninteresting_unary_ops(e);
-    match &e.x {
+    match e.e() {
         ExpX::Ctor(_, variant_ident, _) => variant_ident == &variant.name,
         _ => false,
     }
@@ -881,14 +881,14 @@ fn is_ctor_for(e: &Exp, variant: &Variant) -> bool {
 
 fn is_ctor_for_other(e: &Exp, variant: &Variant) -> bool {
     let e = remove_uninteresting_unary_ops(e);
-    match &e.x {
+    match e.e() {
         ExpX::Ctor(_, variant_ident, _) => variant_ident != &variant.name,
         _ => false,
     }
 }
 
 fn fuel_arg_to_int(e: &Exp) -> Option<usize> {
-    match &e.x {
+    match e.e() {
         ExpX::Var(_) => None,
         ExpX::FuelConst(i) => Some(*i),
         _ => panic!(
@@ -1031,8 +1031,8 @@ fn split_precondition(ctx: &Ctx, span: &Span, name: &Fun, typs: &Typs, args: &Ex
     let typ_params = &fun.x.typ_params;
     for exp in fun.x.decl.reqs.iter().cloned() {
         // In requires, old(x) is really just x:
-        let mut f_var_at = |e: &Exp| match &e.x {
-            ExpX::VarAt(x, crate::ast::VarAt::Pre) => e.new_x(ExpX::Var(x.clone())),
+        let mut f_var_at = |e: &Exp| match e.e() {
+            ExpX::VarAt(x, crate::ast::VarAt::Pre) => e.new_x_tagged(ExpX::Var(x.clone())),
             _ => e.clone(),
         };
         let exp = crate::sst_visitor::map_exp_visitor(&exp, &mut f_var_at);
@@ -1070,7 +1070,7 @@ pub fn inline_expression(
         substs.insert(unique.clone(), arg.clone());
     }
     let e = crate::sst_util::subst_exp(&typ_substs, &substs, body);
-    let e = SpannedTyped::new(&body.span, &e.typ, e.x.clone());
+    let e = SpannedTyped::new_tagged(&body.span, &e.typ, e.e().clone());
     return e;
 }
 

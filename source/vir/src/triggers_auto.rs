@@ -315,7 +315,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         crate::ast_visitor::map_typ_visitor_env(typ, all_terms, &ft).unwrap();
     }
 
-    let (is_pure, term) = match &exp.x {
+    let (is_pure, term) = match exp.e() {
         ExpX::Const(c) => (true, Arc::new(TermX::App(App::Const(c.clone()), Arc::new(vec![])))),
         ExpX::Var(x) => (true, Arc::new(TermX::Var(x.clone()))),
         ExpX::VarLoc(..) | ExpX::Loc(..) => panic!("unexpected Loc/VarLoc in quantifier"),

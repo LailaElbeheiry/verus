@@ -696,7 +696,7 @@ pub(crate) fn constant_to_expr(ctx: &Ctx, constant: &crate::ast::Constant) -> Ex
 }
 
 fn exp_get_custom_err(exp: &Exp) -> Option<Arc<String>> {
-    match &exp.x {
+    match exp.e() {
         ExpX::UnaryOpr(UnaryOpr::Box(_), e) => exp_get_custom_err(e),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), e) => exp_get_custom_err(e),
         ExpX::UnaryOpr(UnaryOpr::CustomErr(s), _) => Some(s.clone()),
@@ -770,7 +770,7 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
     let qcount = ctx.quantifier_count.get();
     let qid = new_user_qid_name(&fun_name, qcount);
     ctx.quantifier_count.set(qcount + 1);
-    let trigs = match &exp.x {
+    let trigs = match exp.e() {
         ExpX::Bind(bnd, _) => match &bnd.x {
             BndX::Quant(_, _, trigs, _) => trigs,
             BndX::Choose(_, trigs, _) => trigs,
@@ -801,7 +801,7 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
 pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<Expr, VirErr> {
     let typ_to_ids = |typ| typ_to_ids(ctx, typ);
 
-    let result = match &exp.x {
+    let result = match exp.e() {
         ExpX::Const(c) => {
             let expr = constant_to_expr(ctx, c);
             expr
@@ -1069,7 +1069,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         },
         ExpX::Binary(op, lhs, rhs) => {
             let wrap_arith = true; // use Add, Sub, etc. wrappers to allow triggers on +, -, etc.
-            let has_const = match (&lhs.x, &rhs.x) {
+            let has_const = match (lhs.e(), rhs.e()) {
                 (ExpX::Const(..), _) => true,
                 (_, ExpX::Const(..)) => true,
                 _ => false,
@@ -1421,16 +1421,16 @@ impl State {
 }
 
 fn loc_is_var(e: &Exp) -> Option<&UniqueIdent> {
-    match &e.x {
+    match e.e() {
         ExpX::VarLoc(x) => Some(x),
         _ => None,
     }
 }
 
 pub(crate) fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
-    let x_var = SpannedTyped::new(&span, &exp.typ, ExpX::Var(x.clone()));
+    let x_var = SpannedTyped::new_tagged(&span, &exp.typ, ExpX::Var(x.clone()));
     let eqx = ExpX::Binary(BinaryOp::Eq(Mode::Spec), x_var, exp.clone());
-    let eq = SpannedTyped::new(&span, &Arc::new(TypX::Bool), eqx);
+    let eq = SpannedTyped::new_tagged(&span, &Arc::new(TypX::Bool), eqx);
     Spanned::new(span.clone(), StmX::Assume(eq))
 }
 
@@ -1446,8 +1446,8 @@ struct LocFieldInfo<A> {
 }
 
 fn var_locs_to_bare_vars(arg: &Exp) -> Exp {
-    crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
-        ExpX::VarLoc(x) => SpannedTyped::new(&e.span, &e.typ, ExpX::Var(x.clone())),
+    crate::sst_visitor::map_exp_visitor(arg, &mut |e| match e.e() {
+        ExpX::VarLoc(x) => SpannedTyped::new_tagged(&e.span, &e.typ, ExpX::Var(x.clone())),
         _ => e.clone(),
     })
 }
@@ -1462,7 +1462,7 @@ fn loc_to_field_update_data(loc: &Exp) -> (UniqueIdent, LocFieldInfo<Vec<FieldUp
     let mut e: &Exp = loc;
     let mut fields = Vec::new();
     loop {
-        match &e.x {
+        match e.e() {
             ExpX::Loc(ee) => e = ee,
             ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), ee) => e = ee,
             ExpX::VarLoc(x) => {
@@ -1486,10 +1486,12 @@ fn loc_to_field_update_data(loc: &Exp) -> (UniqueIdent, LocFieldInfo<Vec<FieldUp
 }
 
 fn snapshotted_var_locs(arg: &Exp, snapshot_name: &str) -> Exp {
-    crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
-        ExpX::VarLoc(x) => {
-            SpannedTyped::new(&e.span, &e.typ, ExpX::Old(snapshot_ident(snapshot_name), x.clone()))
-        }
+    crate::sst_visitor::map_exp_visitor(arg, &mut |e| match e.e() {
+        ExpX::VarLoc(x) => SpannedTyped::new_tagged(
+            &e.span,
+            &e.typ,
+            ExpX::Old(snapshot_ident(snapshot_name), x.clone()),
+        ),
         _ => e.clone(),
     })
 }
@@ -1506,7 +1508,7 @@ fn assume_other_fields_unchanged(
     expr_ctxt: &ExprCtxt,
 ) -> Result<Option<Stmt>, VirErr> {
     let LocFieldInfo { base_typ, base_span, a: updates } = mutated_fields;
-    let base_exp = SpannedTyped::new(base_span, base_typ, ExpX::VarLoc(base.clone()));
+    let base_exp = SpannedTyped::new_tagged(base_span, base_typ, ExpX::VarLoc(base.clone()));
     let eqs = assume_other_fields_unchanged_inner(
         ctx,
         snapshot_name,
@@ -1550,12 +1552,13 @@ fn assume_other_fields_unchanged_inner(
                         } else {
                             let op = UnaryOpr::Unbox(base_typ.clone());
                             let exprx = ExpX::UnaryOpr(op, base.clone());
-                            let unbox = SpannedTyped::new(&base.span, base_typ, exprx);
+                            let unbox = SpannedTyped::new_tagged(&base.span, base_typ, exprx);
                             if box_unbox_eq.len() == 0 {
                                 // trigger Box(Unbox(base)) so that has_type succeeds on base
                                 let box_op = UnaryOpr::Box(base_typ.clone());
                                 let exprx = ExpX::UnaryOpr(box_op, unbox.clone());
-                                let box_unbox = SpannedTyped::new(&base.span, &base.typ, exprx);
+                                let box_unbox =
+                                    SpannedTyped::new_tagged(&base.span, &base.typ, exprx);
                                 let eq = ExprX::Binary(
                                     air::ast::BinaryOp::Eq,
                                     exp_to_expr(ctx, &box_unbox, expr_ctxt)?,
@@ -1577,7 +1580,7 @@ fn assume_other_fields_unchanged_inner(
                         crate::poly::coerce_typ_to_native(ctx, &typ)
                     };
 
-                    let field_exp = SpannedTyped::new(
+                    let field_exp = SpannedTyped::new_tagged(
                         stm_span,
                         &typ,
                         ExpX::UnaryOpr(
@@ -1742,10 +1745,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             for (param, arg) in func.x.params.iter().zip(args.iter()) {
                 let arg_x = if let Some(Dest { dest, is_init: _ }) = dest {
                     let var = get_loc_var(dest);
-                    crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
+                    crate::sst_visitor::map_exp_visitor(arg, &mut |e| match e.e() {
                         ExpX::Var(x) if *x == var => {
                             call_snapshot = true;
-                            SpannedTyped::new(
+                            SpannedTyped::new_tagged(
                                 &e.span,
                                 &e.typ,
                                 ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.clone()),

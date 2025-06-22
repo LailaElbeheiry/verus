@@ -187,8 +187,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
 
     fn visit_exp_rec(&mut self, exp: &Exp) -> Result<R::Ret<Exp>, Err> {
         let typ = self.visit_typ(&exp.typ)?;
-        let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &R::get(typ), e);
-        match &exp.x {
+        let exp_new = |e: ExpX| SpannedTyped::new_tagged(&exp.span, &R::get(typ), e);
+        match exp.e() {
             ExpX::Const(_) => R::ret(|| exp.clone()),
             ExpX::Var(..) => R::ret(|| exp.clone()),
             ExpX::VarAt(..) => R::ret(|| exp.clone()),
@@ -842,12 +842,12 @@ where
 }
 
 pub(crate) fn exp_rename_vars(exp: &Exp, map: &HashMap<UniqueIdent, UniqueIdent>) -> Exp {
-    map_exp_visitor(exp, &mut |exp| match &exp.x {
+    map_exp_visitor(exp, &mut |exp| match exp.e() {
         ExpX::VarAt(x, crate::ast::VarAt::Pre) if map.contains_key(x) => {
-            SpannedTyped::new(&exp.span, &exp.typ, ExpX::Var(map[x].clone()))
+            SpannedTyped::new_tagged(&exp.span, &exp.typ, ExpX::Var(map[x].clone()))
         }
         ExpX::Var(x) if map.contains_key(x) => {
-            SpannedTyped::new(&exp.span, &exp.typ, ExpX::Var(map[x].clone()))
+            SpannedTyped::new_tagged(&exp.span, &exp.typ, ExpX::Var(map[x].clone()))
         }
         _ => exp.clone(),
     })

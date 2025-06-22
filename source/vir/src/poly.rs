@@ -289,7 +289,7 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
             } else {
                 let op = UnaryOpr::Unbox(typ.clone());
                 let expx = ExpX::UnaryOpr(op, exp.clone());
-                SpannedTyped::new(&exp.span, typ, expx)
+                SpannedTyped::new_tagged(&exp.span, typ, expx)
             }
         }
         TypX::TypParam(_) | TypX::Projection { .. } | TypX::PointeeMetadata(_) => exp.clone(),
@@ -307,7 +307,7 @@ pub(crate) fn coerce_exp_to_poly(ctx: &Ctx, exp: &Exp) -> Exp {
         let op = UnaryOpr::Box(exp.typ.clone());
         let expx = ExpX::UnaryOpr(op, exp.clone());
         let typ = Arc::new(TypX::Boxed(exp.typ.clone()));
-        SpannedTyped::new(&exp.span, &typ, expx)
+        SpannedTyped::new_tagged(&exp.span, &typ, expx)
     }
 }
 
@@ -409,14 +409,16 @@ pub(crate) fn arg_is_poly(ctx: &Ctx, kind: &FunctionKind, mode: Mode, arg_typ: &
 }
 
 fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
-    let mk_exp = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
-    let mk_exp_typ = |t: &Typ, e: ExpX| SpannedTyped::new(&exp.span, t, e);
-    match &exp.x {
+    let mk_exp = |e: ExpX| SpannedTyped::new_tagged(&exp.span, &exp.typ, e);
+    let mk_exp_typ = |t: &Typ, e: ExpX| SpannedTyped::new_tagged(&exp.span, t, e);
+    match exp.e() {
         ExpX::Const(_) => exp.clone(),
-        ExpX::Var(x) => SpannedTyped::new(&exp.span, &state.types[x], ExpX::Var(x.clone())),
-        ExpX::VarLoc(x) => SpannedTyped::new(&exp.span, &state.types[x], ExpX::VarLoc(x.clone())),
+        ExpX::Var(x) => SpannedTyped::new_tagged(&exp.span, &state.types[x], ExpX::Var(x.clone())),
+        ExpX::VarLoc(x) => {
+            SpannedTyped::new_tagged(&exp.span, &state.types[x], ExpX::VarLoc(x.clone()))
+        }
         ExpX::VarAt(x, at) => {
-            SpannedTyped::new(&exp.span, &state.types[x], ExpX::VarAt(x.clone(), *at))
+            SpannedTyped::new_tagged(&exp.span, &state.types[x], ExpX::VarAt(x.clone(), *at))
         }
         ExpX::StaticVar(_) => exp.clone(),
         ExpX::Loc(e) => {
@@ -446,7 +448,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                         assert!(exps.len() == function.pars.len() + 1);
                         let last = exps.last().unwrap();
                         // The last argument is the fuel parameter
-                        assert!(matches!(&last.x, ExpX::Var(_)));
+                        assert!(matches!(last.e(), ExpX::Var(_)));
                         args.push(last.clone());
                     }
                     _ => unreachable!(),
@@ -730,7 +732,7 @@ fn visit_trigs(ctx: &Ctx, state: &mut State, trigs: &Trigs) -> Trigs {
 
 fn take_temp(state: &mut State, dest: &Dest) -> Option<VarIdent> {
     if dest.is_init {
-        if let ExpX::VarLoc(x) = &dest.dest.x {
+        if let ExpX::VarLoc(x) = dest.dest.e() {
             if state.remaining_temps.contains(x) {
                 state.remaining_temps.remove(x);
                 return Some(x.clone());
