@@ -27,7 +27,7 @@ struct State {
 }
 
 fn preprocess_exp(exp: &Exp) -> Exp {
-    match &exp.x {
+    match exp.e() {
         ExpX::UnaryOpr(UnaryOpr::Box(_), _) | ExpX::UnaryOpr(UnaryOpr::Unbox(_), _) => {
             panic!("unexpected box")
         }
