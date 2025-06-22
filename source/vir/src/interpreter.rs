@@ -346,7 +346,7 @@ impl SyntacticEquality for Exp {
         // If we can't definitively establish equality, we conservatively return None
         let def_eq = |b| if b { Some(true) } else { None };
         use ExpX::*;
-        match (&self.x, &other.x) {
+        match (self.e(), other.e()) {
             (Const(l), Const(r)) => {
                 // Explicitly enumerate cases here, in case we someday introduce
                 // a constant type that doesn't have a unique representation
@@ -498,7 +498,7 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
             $($($f(state, $y);)*)?
         }}
     }
-    match &exp.x {
+    match exp.e() {
         Const(c) => dohash!(0, c),
         Var(id) => dohash!(1, id),
         VarLoc(id) => dohash!(2, id),
@@ -681,13 +681,13 @@ fn eval_array(
 ) -> Result<Exp, VirErr> {
     use ExpX::*;
     use InterpExp::*;
-    match &exp.x {
+    match exp.e() {
         Call(_fun, _typs, _old_args) => {
             use ArrayFn::*;
             match array_fn {
                 View => {
                     let array_exp = &args[0];
-                    match &array_exp.x {
+                    match array_exp.e() {
                         Interp(Array(es)) => {
                             let im_vec: Vector<Exp> =
                                 Vector::from_iter(es.iter().map(|e| e.clone()));
@@ -714,7 +714,7 @@ fn eval_array(
                                 Arc::new(vec![inner_typ]),
                                 Arc::new(vec![]),
                             ));
-                            let e = SpannedTyped::new(&exp.span, &seq_typ, Interp(Seq(im_vec)));
+                            let e = SpannedTyped::new_tagged(&exp.span, &seq_typ, Interp(Seq(im_vec)));
                             Ok(e)
                         }
                         _ => panic!(
@@ -727,7 +727,7 @@ fn eval_array(
         }
         _ => panic!(
             "Expected array expression to be a Call.  Got {:} instead.",
-            exp.x.to_user_string(&ctx.global)
+            exp.e().to_user_string(&ctx.global)
         ),
     }
 }
@@ -794,7 +794,7 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
         Arc::new(vec![inner_typ.clone()]),
         Arc::new(vec![]),
     ));
-    let new_seq_exp = |e: ExpX| SpannedTyped::new(span, &seq_typ, e);
+    let new_seq_exp = |e: ExpX| SpannedTyped::new_tagged(span, &seq_typ, e);
     if s.len() <= 1 {
         let typs = Arc::new(vec![inner_typ.clone()]);
         let path_empty = Arc::new(PathX {
@@ -844,7 +844,7 @@ fn array_to_sst(span: &Span, typ: Typ, arr: &Vector<Exp>) -> Exp {
     } else {
         typ
     };
-    let exp_new = |e: ExpX| SpannedTyped::new(span, &arr_typ, e);
+    let exp_new = |e: ExpX| SpannedTyped::new_tagged(span, &arr_typ, e);
     let exps = Arc::new(arr.iter().map(|e| cleanup_exp(e)).flatten().collect());
     let exp = exp_new(ExpX::ArrayLiteral(exps));
     exp
@@ -863,7 +863,7 @@ fn eval_seq(
 ) -> Result<Exp, VirErr> {
     use ExpX::*;
     use InterpExp::*;
-    match &exp.x {
+    match exp.e() {
         Call(fun, typs, _old_args) => {
             let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
             let bool_new = |b: bool| Ok(exp_new(Const(Constant::Bool(b))));
@@ -879,7 +879,7 @@ fn eval_seq(
                 let new_args = Arc::new(new_args);
                 Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
             };
-            let get_int = |e: &Exp| match &e.x {
+            let get_int = |e: &Exp| match e.e() {
                 Const(Constant::Int(index)) => Some(BigInt::to_usize(index).unwrap()),
                 _ => None,
             };
@@ -1022,7 +1022,7 @@ fn eval_array_index(
     // If we can't make any progress at all, we return the partially simplified call
     let ok = Ok(exp_new(Binary(crate::ast::BinaryOp::ArrayIndex, arr.clone(), index_exp.clone())));
     // For now, the only possible function is array_index
-    match &arr.x {
+    match arr.e() {
         Interp(Array(s)) => match &index_exp.x {
             Const(Constant::Int(i)) => match BigInt::to_usize(i) {
                 None => {
@@ -1076,7 +1076,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     let int_new = |i: BigInt| exp_new(Const(Constant::Int(i)));
     let zero = int_new(BigInt::zero());
     use ExpX::*;
-    let r = match &exp.x {
+    let r = match exp.e() {
         Const(_) => ok,
         Var(id) => match state.env.get(id) {
             None => {
@@ -1117,7 +1117,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             use UnaryOp::*;
             let e = eval_expr_internal(ctx, state, e)?;
             let ok = exp_new(Unary(*op, e.clone()));
-            match &e.x {
+            match e.e() {
                 Const(Bool(b)) => {
                     // Explicitly enumerate UnaryOps, in case more are added
                     match op {
@@ -1259,11 +1259,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     panic!("Box/Unbox are added later; we shouldn't see them here")
                 }
                 HasType(_) => ok,
-                IsVariant { datatype, variant } => match &e.x {
+                IsVariant { datatype, variant } => match e.e() {
                     Ctor(dt, var, _) => bool_new(dt == datatype && var == variant),
                     _ => ok,
                 },
-                Field(f) => match &e.x {
+                Field(f) => match e.e() {
                     Ctor(_dt, _var, binders) => {
                         match binders.iter().position(|b| b.name == f.field) {
                             None => ok,
@@ -1275,7 +1275,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 IntegerTypeBound(kind, _) => {
                     // We're about to take an exponent, so bound this
                     // by something reasonable.
-                    match &e.x {
+                    match e.e() {
                         Const(Constant::Int(i)) => match i.to_u32() {
                             Some(i) if i <= 1024 => match kind {
                                 IntegerTypeBoundKind::ArchWordBits => match ctx.arch {
@@ -1597,9 +1597,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 Ok(prev_result)
                             }
                             None => {
-                                let typ_params = &func.x.typ_params;
-                                let pars = &func.x.pars;
-                                let body = &func.x.axioms.spec_axioms.as_ref().unwrap().body_exp;
+                                let typ_params = func.e().typ_params;
+                                let pars = func.e().pars;
+                                let body = func.e().axioms.spec_axioms.as_ref().unwrap().body_exp;
                                 state.cache_misses += 1;
                                 state.env.push_scope(true);
                                 state.type_env.push_scope(true);
@@ -1656,9 +1656,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
         }
         CallLambda(lambda, args) => {
             let lambda = eval_expr_internal(ctx, state, lambda)?;
-            match &lambda.x {
-                Interp(InterpExp::Closure(lambda, context)) => match &lambda.x {
-                    Bind(bnd, body) => match &bnd.x {
+            match lambda.e() {
+                Interp(InterpExp::Closure(lambda, context)) => match lambda.e() {
+                    Bind(bnd, body) => match bnd.e() {
                         BndX::Lambda(bnds, _trigs) => {
                             let new_args: Result<Vec<Exp>, VirErr> =
                                 args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
@@ -1688,7 +1688,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 _ => ok,
             }
         }
-        Bind(bnd, e) => match &bnd.x {
+        Bind(bnd, e) => match bnd.e() {
             BndX::Let(bnds) => {
                 state.env.push_scope(true);
                 for b in bnds.iter() {
@@ -1767,7 +1767,7 @@ fn cleanup_array(span: &Span, typ: Typ, v: &Vector<Exp>) -> Exp {
 /// Restore the free variables we hid during interpretation
 /// and any sequence expressions we partially simplified during interpretation
 fn cleanup_exp(exp: &Exp) -> Result<Exp, VirErr> {
-    crate::sst_visitor::map_exp_visitor_result(exp, &mut |e| match &e.x {
+    crate::sst_visitor::map_exp_visitor_result(exp, &mut |e| match e.e() {
         ExpX::Interp(InterpExp::FreeVar(v)) => {
             Ok(SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone())))
         }
@@ -1803,7 +1803,7 @@ enum SimplificationResult {
 fn eval_expr_top(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<SimplificationResult, VirErr> {
     use BinaryOp::*;
     use ExpX::*;
-    match &exp.x {
+    match exp.e() {
         Binary(op @ (Eq(_) | Ne | Inequality(_)), e1, e2) => {
             let e1 = eval_expr_internal(ctx, state, e1)?;
             let e2 = eval_expr_internal(ctx, state, e2)?;

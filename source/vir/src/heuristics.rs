@@ -45,7 +45,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
     // the ordinary assert can supply a default "tactic" with some basic heuristics.
     // (To opt out of such heuristics, we could support something like "assert(expr) by()"
     // with an empty by().)
-    match &exp.x {
+    match exp.e() {
         ExpX::Unary(op, e) => match op {
             UnaryOp::Not | UnaryOp::BitNot(_) | UnaryOp::Clip { .. } => exp.clone(),
             UnaryOp::StrLen | UnaryOp::StrIsAscii => exp.clone(),
@@ -55,7 +55,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             | UnaryOp::MustBeFinalized
             | UnaryOp::MustBeElaborated
             | UnaryOp::HeightTrigger
-            | UnaryOp::CastToInteger => exp.new_x(ExpX::Unary(*op, insert_auto_ext_equal(ctx, e))),
+            | UnaryOp::CastToInteger => exp.new_x_tagged(ExpX::Unary(*op, insert_auto_ext_equal(ctx, e))),
         },
         ExpX::UnaryOpr(op, e) => match op {
             UnaryOpr::HasType(_) | UnaryOpr::IsVariant { .. } => exp.clone(),
@@ -63,7 +63,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             UnaryOpr::IntegerTypeBound(..) => exp.clone(),
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
             UnaryOpr::CustomErr(_) => {
-                exp.new_x(ExpX::UnaryOpr(op.clone(), insert_auto_ext_equal(ctx, e)))
+                exp.new_x_tagged(ExpX::UnaryOpr(op.clone(), insert_auto_ext_equal(ctx, e)))
             }
         },
         ExpX::Binary(op, e1, e2) => match op {
@@ -72,16 +72,16 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
                     && crate::ast_util::types_equal(&e1.typ, &e2.typ) =>
             {
                 let op = BinaryOpr::ExtEq(false, e1.typ.clone());
-                exp.new_x(ExpX::BinaryOpr(op, e1.clone(), e2.clone()))
+                exp.new_x_tagged(ExpX::BinaryOpr(op, e1.clone(), e2.clone()))
             }
             BinaryOp::And | BinaryOp::Or => {
                 let e1 = insert_auto_ext_equal(ctx, e1);
                 let e2 = insert_auto_ext_equal(ctx, e2);
-                exp.new_x(ExpX::Binary(*op, e1, e2))
+                exp.new_x_tagged(ExpX::Binary(*op, e1, e2))
             }
             BinaryOp::Implies => {
                 let e2 = insert_auto_ext_equal(ctx, e2);
-                exp.new_x(ExpX::Binary(*op, e1.clone(), e2))
+                exp.new_x_tagged(ExpX::Binary(*op, e1.clone(), e2))
             }
             BinaryOp::Eq(_)
             | BinaryOp::HeightCompare { .. }
@@ -97,22 +97,22 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
         ExpX::If(e1, e2, e3) => {
             let e2 = insert_auto_ext_equal(ctx, e2);
             let e3 = insert_auto_ext_equal(ctx, e3);
-            exp.new_x(ExpX::If(e1.clone(), e2, e3))
+            exp.new_x_tagged(ExpX::If(e1.clone(), e2, e3))
         }
         ExpX::WithTriggers(trigs, e) => {
             let e = insert_auto_ext_equal(ctx, e);
-            exp.new_x(ExpX::WithTriggers(trigs.clone(), e.clone()))
+            exp.new_x_tagged(ExpX::WithTriggers(trigs.clone(), e.clone()))
         }
         ExpX::Bind(bnd, e) => match &bnd.x {
             BndX::Let(..) | BndX::Quant(..) => {
                 let e = insert_auto_ext_equal(ctx, e);
-                exp.new_x(ExpX::Bind(bnd.clone(), e))
+                exp.new_x_tagged(ExpX::Bind(bnd.clone(), e))
             }
             BndX::Lambda(..) | BndX::Choose(..) => exp.clone(),
         },
         ExpX::ArrayLiteral(es) => {
             let es = es.iter().map(|e| insert_auto_ext_equal(ctx, e)).collect();
-            exp.new_x(ExpX::ArrayLiteral(Arc::new(es)))
+            exp.new_x_tagged(ExpX::ArrayLiteral(Arc::new(es)))
         }
         ExpX::Const(_)
         | ExpX::Var(_)

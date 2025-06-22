@@ -1428,9 +1428,9 @@ fn loc_is_var(e: &Exp) -> Option<&UniqueIdent> {
 }
 
 pub(crate) fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
-    let x_var = SpannedTyped::new(&span, &exp.typ, ExpX::Var(x.clone()));
+    let x_var = SpannedTyped::new_tagged(&span, &exp.typ, ExpX::Var(x.clone()));
     let eqx = ExpX::Binary(BinaryOp::Eq(Mode::Spec), x_var, exp.clone());
-    let eq = SpannedTyped::new(&span, &Arc::new(TypX::Bool), eqx);
+    let eq = SpannedTyped::new_tagged(&span, &Arc::new(TypX::Bool), eqx);
     Spanned::new(span.clone(), StmX::Assume(eq))
 }
 
@@ -1447,7 +1447,7 @@ struct LocFieldInfo<A> {
 
 fn var_locs_to_bare_vars(arg: &Exp) -> Exp {
     crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
-        ExpX::VarLoc(x) => SpannedTyped::new(&e.span, &e.typ, ExpX::Var(x.clone())),
+        ExpX::VarLoc(x) => SpannedTyped::new_tagged(&e.span, &e.typ, ExpX::Var(x.clone())),
         _ => e.clone(),
     })
 }
@@ -1488,7 +1488,7 @@ fn loc_to_field_update_data(loc: &Exp) -> (UniqueIdent, LocFieldInfo<Vec<FieldUp
 fn snapshotted_var_locs(arg: &Exp, snapshot_name: &str) -> Exp {
     crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
         ExpX::VarLoc(x) => {
-            SpannedTyped::new(&e.span, &e.typ, ExpX::Old(snapshot_ident(snapshot_name), x.clone()))
+            SpannedTyped::new_tagged(&e.span, &e.typ, ExpX::Old(snapshot_ident(snapshot_name), x.clone()))
         }
         _ => e.clone(),
     })
@@ -1506,7 +1506,7 @@ fn assume_other_fields_unchanged(
     expr_ctxt: &ExprCtxt,
 ) -> Result<Option<Stmt>, VirErr> {
     let LocFieldInfo { base_typ, base_span, a: updates } = mutated_fields;
-    let base_exp = SpannedTyped::new(base_span, base_typ, ExpX::VarLoc(base.clone()));
+    let base_exp = SpannedTyped::new_tagged(base_span, base_typ, ExpX::VarLoc(base.clone()));
     let eqs = assume_other_fields_unchanged_inner(
         ctx,
         snapshot_name,
@@ -1550,12 +1550,12 @@ fn assume_other_fields_unchanged_inner(
                         } else {
                             let op = UnaryOpr::Unbox(base_typ.clone());
                             let exprx = ExpX::UnaryOpr(op, base.clone());
-                            let unbox = SpannedTyped::new(&base.span, base_typ, exprx);
+                            let unbox = SpannedTyped::new_tagged(&base.span, base_typ, exprx);
                             if box_unbox_eq.len() == 0 {
                                 // trigger Box(Unbox(base)) so that has_type succeeds on base
                                 let box_op = UnaryOpr::Box(base_typ.clone());
                                 let exprx = ExpX::UnaryOpr(box_op, unbox.clone());
-                                let box_unbox = SpannedTyped::new(&base.span, &base.typ, exprx);
+                                let box_unbox = SpannedTyped::new_tagged(&base.span, &base.typ, exprx);
                                 let eq = ExprX::Binary(
                                     air::ast::BinaryOp::Eq,
                                     exp_to_expr(ctx, &box_unbox, expr_ctxt)?,
@@ -1577,7 +1577,7 @@ fn assume_other_fields_unchanged_inner(
                         crate::poly::coerce_typ_to_native(ctx, &typ)
                     };
 
-                    let field_exp = SpannedTyped::new(
+                    let field_exp = SpannedTyped::new_tagged(
                         stm_span,
                         &typ,
                         ExpX::UnaryOpr(
@@ -1745,7 +1745,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
                         ExpX::Var(x) if *x == var => {
                             call_snapshot = true;
-                            SpannedTyped::new(
+                            SpannedTyped::new_tagged(
                                 &e.span,
                                 &e.typ,
                                 ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.clone()),

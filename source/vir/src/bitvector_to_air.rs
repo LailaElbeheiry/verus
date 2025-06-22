@@ -258,7 +258,7 @@ struct BvExpr {
 }
 
 fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, VirErr> {
-    match &exp.x {
+    match exp.e() {
         ExpX::Const(crate::ast::Constant::Int(i)) => {
             let (bv_typ, bitstr) = minimal_bv_for_const(i);
             let (width, _) = bv_typ.expect_bv(&exp.span)?;
@@ -321,7 +321,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                 })
             }
             UnaryOp::Clip { range: int_range, .. } => {
-                match &arg.x {
+                match arg.e() {
                     ExpX::Binary(BinaryOp::Arith(arith_op, _), lhs, rhs) => {
                         return do_arith_then_clip(
                             ctx,
@@ -538,7 +538,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             let archw = bitwidth_exact(state, IntegerTypeBitwidth::ArchWordSize);
             let i = BigInt::from_u32(archw).unwrap();
             let expx = ExpX::Const(crate::ast::Constant::Int(i));
-            let exp = SpannedTyped::new(&exp.span, &exp.typ, expx);
+            let exp = SpannedTyped::new_tagged(&exp.span, &exp.typ, expx);
             bv_exp_to_expr(ctx, state, &exp)
         }
         ExpX::If(e1, e2, e3) => {

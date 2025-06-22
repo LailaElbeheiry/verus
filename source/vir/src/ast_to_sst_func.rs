@@ -357,16 +357,16 @@ pub fn func_decl_to_sst(
                 binders.push(Arc::new(bind));
             }
 
-            let exp = match &exp.x {
-                ExpX::Unary(UnaryOp::MustBeElaborated, ebind) => match &ebind.x {
+            let exp = match exp.e() {
+                ExpX::Unary(UnaryOp::MustBeElaborated, ebind) => match ebind.e() {
                     ExpX::Bind(bnd, e) => match &bnd.x {
                         BndX::Quant(quant, qbinders, trigs, None) => {
                             let mut qbinders = (&**qbinders).clone();
                             qbinders.append(&mut binders);
                             let bndx = BndX::Quant(*quant, Arc::new(qbinders), trigs.clone(), None);
                             let bnd = Spanned::new(bnd.span.clone(), bndx);
-                            let ebind = ebind.new_x(ExpX::Bind(bnd, e.clone()));
-                            exp.new_x(ExpX::Unary(UnaryOp::MustBeElaborated, ebind))
+                            let ebind = ebind.new_x_tagged(ExpX::Bind(bnd, e.clone()));
+                            exp.new_x_tagged(ExpX::Unary(UnaryOp::MustBeElaborated, ebind))
                         }
                         _ => {
                             panic!("fndef_axiom should be forall");

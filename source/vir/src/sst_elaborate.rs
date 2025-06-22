@@ -48,7 +48,7 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
                     let e = crate::sst_util::subst_exp(&typ_substs, &substs, body);
                     // keep the original outer span for better trigger messages
                     // keep the original type so that poly.rs can perform the proper box/unbox on e
-                    let e = SpannedTyped::new(&exp.span, &exp.typ, e.x.clone());
+                    let e = SpannedTyped::new_tagged(&exp.span, &exp.typ, e.x.clone());
                     return Ok(e);
                 }
             }
@@ -79,7 +79,7 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
                 }
                 let bnd =
                     Spanned::new(bnd.span.clone(), BndX::Quant(*quant, bs.clone(), trigs, None));
-                Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
+                Ok(SpannedTyped::new_tagged(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
             }
             BndX::Choose(bs, trigs, cond) => {
                 assert!(trigs.len() == 0);
@@ -87,7 +87,7 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
                 let trigs = build_triggers(ctx, &exp.span, &vars, &cond, false)?;
                 let bnd =
                     Spanned::new(bnd.span.clone(), BndX::Choose(bs.clone(), trigs, cond.clone()));
-                Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
+                Ok(SpannedTyped::new_tagged(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
             }
             BndX::Lambda(bs, trigs) => {
                 assert!(trigs.len() == 0);
@@ -103,7 +103,7 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
                     diagnostics.report(&warning(&exp.span, msg).to_any());
                 }
                 let bnd = Spanned::new(bnd.span.clone(), BndX::Lambda(bs.clone(), trigs));
-                Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
+                Ok(SpannedTyped::new_tagged(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
             }
             _ => Ok(exp.clone()),
         },

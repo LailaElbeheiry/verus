@@ -803,7 +803,7 @@ pub fn func_axioms_to_air(
                 let bndx = BndX::Quant(QUANT_FORALL, Arc::new(binders), triggers.clone(), None);
                 let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), exp.clone());
                 let forall: Arc<SpannedTyped<ExpX>> =
-                    SpannedTyped::new(&span, &Arc::new(TypX::Bool), forallx);
+                    SpannedTyped::new_tagged(&span, &Arc::new(TypX::Bool), forallx);
                 let expr_ctxt = if is_singular {
                     ExprCtxt::new_mode_singular(ExprMode::Spec, true)
                 } else {
