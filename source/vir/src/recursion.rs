@@ -124,13 +124,13 @@ pub(crate) fn check_decrease(
     // and to ignore the extra decreases clauses.
     let tbool = Arc::new(TypX::Bool);
     let when_equalx = ExpX::Const(Constant::Bool(num_decreases < exps.len()));
-    let when_equal = SpannedTyped::new(span, &tbool, when_equalx);
+    let when_equal = SpannedTyped::new_tagged(span, &tbool, when_equalx);
 
     let mut dec_exp: Exp = when_equal;
     for (i, exp) in (0..num_decreases).zip(exps.iter()).rev() {
         let decreases_at_entryx = ExpX::Var(unique_local(&decrease_at_entry(loop_id, i)));
         let decreases_at_entry =
-            SpannedTyped::new(&exp.span, &height_typ(ctx, exp), decreases_at_entryx);
+            SpannedTyped::new_tagged(&exp.span, &height_typ(ctx, exp), decreases_at_entryx);
         // 0 <= decreases_exp < decreases_at_entry
         let args = vec![exp_for_decrease(ctx, exp)?, decreases_at_entry, dec_exp];
         let call = ExpX::Call(
@@ -142,7 +142,7 @@ pub(crate) fn check_decrease(
             Arc::new(vec![]),
             Arc::new(args),
         );
-        dec_exp = SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), call);
+        dec_exp = SpannedTyped::new_tagged(&exp.span, &Arc::new(TypX::Bool), call);
     }
     Ok(dec_exp)
 }
@@ -158,7 +158,7 @@ fn check_decrease_call(
     let name = if let Some(callee) = get_callee(ctxt.ctx, target, resolved_method) {
         callee
     } else {
-        return Ok(SpannedTyped::new(
+        return Ok(SpannedTyped::new_tagged(
             span,
             &Arc::new(TypX::Bool),
             ExpX::Const(Constant::Bool(true)),
@@ -197,7 +197,7 @@ fn check_decrease_call(
             Spanned::new(span.clone(), BndX::Let(Arc::new(binders.clone()))),
             dec_exp.clone(),
         );
-        decreases_exps.push(SpannedTyped::new(&span, &dec_exp.typ, e_decx));
+        decreases_exps.push(SpannedTyped::new_tagged(&span, &dec_exp.typ, e_decx));
     }
     check_decrease(
         ctxt.ctx,
@@ -234,7 +234,7 @@ pub(crate) fn mk_decreases_at_entry(
             span.clone(),
             StmX::Assign {
                 lhs: Dest {
-                    dest: SpannedTyped::new(&span, &typ, ExpX::VarLoc(uniq_ident)),
+                    dest: SpannedTyped::new_tagged(&span, &typ, ExpX::VarLoc(uniq_ident)),
                     is_init: true,
                 },
                 rhs: exp_for_decrease(ctx, exp)?,
@@ -274,7 +274,7 @@ pub(crate) fn rewrite_spec_recursive_fun_with_fueled_rec_call(
             (x.clone(), typs.clone())
         }
     };
-    let body = map_exp_visitor(&body, &mut |exp| match &exp.x {
+    let body = map_exp_visitor(&body, &mut |exp| match exp.e() {
         ExpX::Call(CallFun::Fun(x, resolved_method), typs, args)
             if is_recursive_call(&ctxt, x, resolved_method)
                 && ctx.func_map[&resolve(x, typs, resolved_method).0].x.body.is_some() =>
@@ -282,10 +282,10 @@ pub(crate) fn rewrite_spec_recursive_fun_with_fueled_rec_call(
             let mut args = (**args).clone();
             let varx = ExpX::Var(unique_local(&air_unique_var(FUEL_PARAM)));
             let var_typ = Arc::new(TypX::Air(str_typ(FUEL_TYPE)));
-            args.push(SpannedTyped::new(&exp.span, &var_typ, varx));
+            args.push(SpannedTyped::new_tagged(&exp.span, &var_typ, varx));
             let (name, ts) = resolve(x, typs, resolved_method);
             let callx = ExpX::Call(CallFun::Recursive(name), ts, Arc::new(args));
-            SpannedTyped::new(&exp.span, &exp.typ, callx)
+            SpannedTyped::new_tagged(&exp.span, &exp.typ, callx)
         }
         _ => exp.clone(),
     });
@@ -294,12 +294,12 @@ pub(crate) fn rewrite_spec_recursive_fun_with_fueled_rec_call(
 }
 
 pub(crate) fn rewrite_rec_call_with_fuel_const(body: &Exp, fuel: usize) -> Exp {
-    map_exp_visitor(&body, &mut |exp| match &exp.x {
+    map_exp_visitor(&body, &mut |exp| match exp.e() {
         ExpX::Call(CallFun::Recursive(r), typs, args) => {
             let mut args = (**args).clone();
             let arg_fuel = args.last_mut().expect("args.last");
-            *arg_fuel = arg_fuel.new_x(ExpX::FuelConst(fuel));
-            exp.new_x(ExpX::Call(CallFun::Recursive(r.clone()), typs.clone(), Arc::new(args)))
+            *arg_fuel = arg_fuel.new_x_tagged(ExpX::FuelConst(fuel));
+            exp.new_x_tagged(ExpX::Call(CallFun::Recursive(r.clone()), typs.clone(), Arc::new(args)))
         }
         _ => exp.clone(),
     })
@@ -363,7 +363,7 @@ fn check_termination<'a>(
                 if let Some(Dest { dest, is_init: true }) = &dest {
                     let has_typx =
                         ExpX::UnaryOpr(UnaryOpr::HasType(dest.typ.clone()), dest.clone());
-                    let has_typ = SpannedTyped::new(&s.span, &Arc::new(TypX::Bool), has_typx);
+                    let has_typ = SpannedTyped::new_tagged(&s.span, &Arc::new(TypX::Bool), has_typx);
                     let has_typ_assume = Spanned::new(s.span.clone(), StmX::Assume(has_typ));
                     stms.push(has_typ_assume);
                 }

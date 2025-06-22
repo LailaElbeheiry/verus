@@ -20,7 +20,7 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
     is_native: &mut Option<HashMap<VarIdent, bool>>,
     exp: &Exp,
 ) -> Result<Exp, VirErr> {
-    match &exp.x {
+    match exp.e() {
         ExpX::Call(CallFun::Fun(fun, resolved_method), typs, args) => {
             let (fun, typs) =
                 if let Some((f, ts)) = resolved_method { (f, ts) } else { (fun, typs) };
@@ -48,7 +48,7 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
                     let e = crate::sst_util::subst_exp(&typ_substs, &substs, body);
                     // keep the original outer span for better trigger messages
                     // keep the original type so that poly.rs can perform the proper box/unbox on e
-                    let e = SpannedTyped::new_tagged(&exp.span, &exp.typ, e.x.clone());
+                    let e = SpannedTyped::new_tagged(&exp.span, &exp.typ, e.x.exp.clone());
                     return Ok(e);
                 }
             }
@@ -134,7 +134,7 @@ fn elaborate_one_stm<D: Diagnostics + ?Sized>(
             let err = error_with_label(
                 &exp.span.clone(),
                 "assertion failed",
-                format!("simplified to {}", interp_exp.x.to_user_string(&ctx.global)),
+                format!("simplified to {}", interp_exp.e().to_user_string(&ctx.global)),
             );
             match compute {
                 ComputeMode::Z3 => Ok(stm.new_x(StmX::Assert(id.clone(), Some(err), interp_exp))),

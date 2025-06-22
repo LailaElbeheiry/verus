@@ -255,7 +255,7 @@ pub fn axioms_for_default_spec_fns(
                         .iter()
                         .map(|param| {
                             let unique_id = state.get_var_unique_id(&param.x.name);
-                            SpannedTyped::new(&param.span, &param.x.typ, ExpX::Var(unique_id))
+                            SpannedTyped::new_tagged(&param.span, &param.x.typ, ExpX::Var(unique_id))
                         })
                         .collect::<Vec<_>>(),
                 );
@@ -263,13 +263,13 @@ pub fn axioms_for_default_spec_fns(
                 state.pop_scope();
                 state.finalize();
 
-                let call_exp = SpannedTyped::new(
+                let call_exp = SpannedTyped::new_tagged(
                     &function.span,
                     &function.x.ret.x.typ,
                     ExpX::Call(CallFun::Fun(function.x.name.clone(), None), typ_args, args),
                 );
 
-                let call_trig_exp = SpannedTyped::new(
+                let call_trig_exp = SpannedTyped::new_tagged(
                     &call_exp.span,
                     &call_exp.typ,
                     ExpX::Unary(
@@ -287,7 +287,7 @@ pub fn axioms_for_default_spec_fns(
                         function.span.clone(),
                         BndX::Quant(quant, var_binders, trigs, None),
                     );
-                    SpannedTyped::new(
+                    SpannedTyped::new_tagged(
                         &function.span,
                         &Arc::new(TypX::Bool),
                         ExpX::Bind(bnd, eq_exp),
