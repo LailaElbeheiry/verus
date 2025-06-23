@@ -120,7 +120,9 @@ impl Clone for crate::AssumeSpecification {
             inputs: self.inputs.clone(),
             output: self.output.clone(),
             requires: self.requires.clone(),
+            guard_requires: self.guard_requires.clone(),
             ensures: self.ensures.clone(),
+            guard_ensures: self.guard_ensures.clone(),
             returns: self.returns.clone(),
             invariants: self.invariants.clone(),
             unwind: self.unwind.clone(),
@@ -1336,6 +1338,24 @@ impl Clone for crate::GlobalSizeOf {
         }
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::GuardEnsures {
+    fn clone(&self) -> Self {
+        crate::GuardEnsures {
+            token: self.token.clone(),
+            exprs: self.exprs.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::GuardRequires {
+    fn clone(&self) -> Self {
+        crate::GuardRequires {
+            token: self.token.clone(),
+            exprs: self.exprs.clone(),
+        }
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
 impl Clone for crate::ImplItem {
@@ -2468,8 +2488,10 @@ impl Clone for crate::SignatureSpec {
         crate::SignatureSpec {
             prover: self.prover.clone(),
             requires: self.requires.clone(),
+            guard_requires: self.guard_requires.clone(),
             recommends: self.recommends.clone(),
             ensures: self.ensures.clone(),
+            guard_ensures: self.guard_ensures.clone(),
             returns: self.returns.clone(),
             decreases: self.decreases.clone(),
             invariants: self.invariants.clone(),

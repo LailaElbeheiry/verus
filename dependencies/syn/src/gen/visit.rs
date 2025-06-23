@@ -500,6 +500,12 @@ pub trait Visit<'ast> {
     fn visit_global_size_of(&mut self, i: &'ast crate::GlobalSizeOf) {
         visit_global_size_of(self, i);
     }
+    fn visit_guard_ensures(&mut self, i: &'ast crate::GuardEnsures) {
+        visit_guard_ensures(self, i);
+    }
+    fn visit_guard_requires(&mut self, i: &'ast crate::GuardRequires) {
+        visit_guard_requires(self, i);
+    }
     fn visit_ident(&mut self, i: &'ast proc_macro2::Ident) {
         visit_ident(self, i);
     }
@@ -1305,8 +1311,14 @@ where
     if let Some(it) = &node.requires {
         v.visit_requires(it);
     }
+    if let Some(it) = &node.guard_requires {
+        v.visit_guard_requires(it);
+    }
     if let Some(it) = &node.ensures {
         v.visit_ensures(it);
+    }
+    if let Some(it) = &node.guard_ensures {
+        v.visit_guard_ensures(it);
     }
     if let Some(it) = &node.returns {
         v.visit_returns(it);
@@ -1558,11 +1570,13 @@ where
     }
     skip!((node.broadcast_use_tokens).0);
     skip!((node.broadcast_use_tokens).1);
+    skip!(node.brace_token);
     for el in Punctuated::pairs(&node.paths) {
         let it = el.value();
         v.visit_expr_path(it);
     }
     skip!(node.semi);
+    skip!(node.warning);
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
@@ -2945,6 +2959,20 @@ where
     v.visit_type(&node.type_);
     skip!(node.eq_token);
     v.visit_expr_lit(&node.expr_lit);
+}
+pub fn visit_guard_ensures<'ast, V>(v: &mut V, node: &'ast crate::GuardEnsures)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.token);
+    v.visit_specification(&node.exprs);
+}
+pub fn visit_guard_requires<'ast, V>(v: &mut V, node: &'ast crate::GuardRequires)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.token);
+    v.visit_specification(&node.exprs);
 }
 pub fn visit_ident<'ast, V>(v: &mut V, node: &'ast proc_macro2::Ident)
 where
@@ -4411,11 +4439,17 @@ where
     if let Some(it) = &node.requires {
         v.visit_requires(it);
     }
+    if let Some(it) = &node.guard_requires {
+        v.visit_guard_requires(it);
+    }
     if let Some(it) = &node.recommends {
         v.visit_recommends(it);
     }
     if let Some(it) = &node.ensures {
         v.visit_ensures(it);
+    }
+    if let Some(it) = &node.guard_ensures {
+        v.visit_guard_ensures(it);
     }
     if let Some(it) = &node.returns {
         v.visit_returns(it);

@@ -114,7 +114,9 @@ impl Hash for crate::AssumeSpecification {
         self.inputs.hash(state);
         self.output.hash(state);
         self.requires.hash(state);
+        self.guard_requires.hash(state);
         self.ensures.hash(state);
+        self.guard_ensures.hash(state);
         self.returns.hash(state);
         self.invariants.hash(state);
         self.unwind.hash(state);
@@ -357,7 +359,9 @@ impl Hash for crate::BroadcastUse {
         H: Hasher,
     {
         self.attrs.hash(state);
+        self.brace_token.hash(state);
         self.paths.hash(state);
+        self.warning.hash(state);
     }
 }
 #[cfg(feature = "full")]
@@ -1732,6 +1736,24 @@ impl Hash for crate::GlobalSizeOf {
         self.expr_lit.hash(state);
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::GuardEnsures {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.exprs.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::GuardRequires {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.exprs.hash(state);
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::ImplItem {
@@ -3083,8 +3105,10 @@ impl Hash for crate::SignatureSpec {
     {
         self.prover.hash(state);
         self.requires.hash(state);
+        self.guard_requires.hash(state);
         self.recommends.hash(state);
         self.ensures.hash(state);
+        self.guard_ensures.hash(state);
         self.returns.hash(state);
         self.decreases.hash(state);
         self.invariants.hash(state);

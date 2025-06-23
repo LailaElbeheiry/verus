@@ -63,8 +63,10 @@ pub(crate) fn fn_call_to_vir<'tcx>(
             Some(
                 VerusItem::Spec(
                     SpecItem::Requires
+                        | SpecItem::GuardRequires
                         | SpecItem::Recommends
                         | SpecItem::Ensures
+                        | SpecItem::GuardEnsures
                         | SpecItem::Returns
                         | SpecItem::OpensInvariantsNone
                         | SpecItem::OpensInvariantsAny
@@ -370,6 +372,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 mk_expr(ExprX::Header(Arc::new(HeaderExprX::NoMethodBody)))
             }
             SpecItem::Requires
+            | SpecItem::GuardRequires
             | SpecItem::Recommends
             | SpecItem::OpensInvariants
             | SpecItem::Returns => {
@@ -396,15 +399,18 @@ fn verus_item_to_vir<'tcx, 'a>(
                 for (arg, vir_arg) in subargs.iter().zip(vir_args.iter()) {
                     let typ = vir::ast_util::undecorate_typ(&vir_arg.typ);
                     match spec_item {
-                        SpecItem::Requires | SpecItem::Recommends => match &*typ {
-                            TypX::Bool => {}
-                            _ => {
-                                return err_span(
-                                    arg.span,
-                                    "requires/recommends needs a bool expression",
-                                );
+                        // FIXME(automation) do the guard requires require a boolean?
+                        SpecItem::Requires | SpecItem::GuardRequires | SpecItem::Recommends => {
+                            match &*typ {
+                                TypX::Bool => {}
+                                _ => {
+                                    return err_span(
+                                        arg.span,
+                                        "requires/guard_requires/recommends needs a bool expression",
+                                    );
+                                }
                             }
-                        },
+                        }
                         SpecItem::OpensInvariants => match &*typ {
                             TypX::Int(_) => {}
                             _ => {
@@ -423,6 +429,9 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                 let header = match spec_item {
                     SpecItem::Requires => Arc::new(HeaderExprX::Requires(Arc::new(vir_args))),
+                    SpecItem::GuardRequires => {
+                        Arc::new(HeaderExprX::GuardRequires(Arc::new(vir_args)))
+                    }
                     SpecItem::Recommends => Arc::new(HeaderExprX::Recommends(Arc::new(vir_args))),
                     SpecItem::OpensInvariants => Arc::new(HeaderExprX::InvariantOpens(
                         bctx.ctxt.spans.to_air_span(expr.span.clone()),
@@ -469,6 +478,14 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
                 let header = extract_ensures(&bctx, args[0])?;
                 // extract_ensures does most of the necessary work, so we can return at this point
+                mk_expr_span(args[0].span, ExprX::Header(header))
+            }
+            SpecItem::GuardEnsures => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                unsupported_err_unless!(args_len == 1, expr.span, "expected guard_ensures", &args);
+                let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                let header = extract_guard_ensures(&bctx, args[0])?;
+                // extract_guard_ensures does most of the necessary work, so we can return at this point
                 mk_expr_span(args[0].span, ExprX::Header(header))
             }
             SpecItem::Decreases => {
@@ -1617,6 +1634,38 @@ fn extract_ensures<'tcx>(
     }
 }
 
+fn extract_guard_ensures<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &'tcx Expr<'tcx>,
+) -> Result<HeaderExpr, VirErr> {
+    let expr = skip_closure_coercion(bctx, expr);
+    let tcx = bctx.ctxt.tcx;
+    match &expr.kind {
+        ExprKind::Closure(closure) => {
+            let typs: Vec<Typ> = closure_param_typs(bctx, expr)?;
+            let body = tcx.hir().body(closure.body);
+            let mut xs: Vec<VarIdent> = Vec::new();
+            for param in body.params.iter() {
+                xs.push(pat_to_var(param.pat)?);
+            }
+            let expr = &body.value;
+            let args = vec_map_result(&extract_array(expr), |e| get_guard_ensures_arg(bctx, e))?;
+            if typs.len() == 1 && xs.len() == 1 {
+                let id_typ = Some((xs[0].clone(), typs[0].clone()));
+                Ok(Arc::new(HeaderExprX::GuardEnsures(id_typ, Arc::new(args))))
+            } else if typs.len() == 0 && xs.len() == 0 {
+                Ok(Arc::new(HeaderExprX::GuardEnsures(None, Arc::new(args))))
+            } else {
+                err_span(expr.span, "expected 1 parameter in closure")
+            }
+        }
+        _ => {
+            let args = vec_map_result(&extract_array(expr), |e| get_guard_ensures_arg(bctx, e))?;
+            Ok(Arc::new(HeaderExprX::GuardEnsures(None, Arc::new(args))))
+        }
+    }
+}
+
 fn extract_quant<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
@@ -1651,6 +1700,19 @@ fn extract_quant<'tcx>(
 }
 
 fn get_ensures_arg<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+) -> Result<vir::ast::Expr, VirErr> {
+    if matches!(bctx.types.expr_ty_adjusted(expr).kind(), TyKind::Bool) {
+        expr_to_vir(bctx, expr, ExprModifier::REGULAR)
+    } else {
+        err_span(expr.span, "ensures needs a bool expression")
+    }
+}
+
+
+// TODO(automation) change this for checking trait implementation?
+fn get_guard_ensures_arg<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {

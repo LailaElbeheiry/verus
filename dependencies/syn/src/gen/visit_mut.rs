@@ -508,6 +508,12 @@ pub trait VisitMut {
     fn visit_global_size_of_mut(&mut self, i: &mut crate::GlobalSizeOf) {
         visit_global_size_of_mut(self, i);
     }
+    fn visit_guard_ensures_mut(&mut self, i: &mut crate::GuardEnsures) {
+        visit_guard_ensures_mut(self, i);
+    }
+    fn visit_guard_requires_mut(&mut self, i: &mut crate::GuardRequires) {
+        visit_guard_requires_mut(self, i);
+    }
     fn visit_ident_mut(&mut self, i: &mut proc_macro2::Ident) {
         visit_ident_mut(self, i);
     }
@@ -1309,8 +1315,14 @@ where
     if let Some(it) = &mut node.requires {
         v.visit_requires_mut(it);
     }
+    if let Some(it) = &mut node.guard_requires {
+        v.visit_guard_requires_mut(it);
+    }
     if let Some(it) = &mut node.ensures {
         v.visit_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.guard_ensures {
+        v.visit_guard_ensures_mut(it);
     }
     if let Some(it) = &mut node.returns {
         v.visit_returns_mut(it);
@@ -1556,11 +1568,13 @@ where
     v.visit_attributes_mut(&mut node.attrs);
     skip!((node.broadcast_use_tokens).0);
     skip!((node.broadcast_use_tokens).1);
+    skip!(node.brace_token);
     for mut el in Punctuated::pairs_mut(&mut node.paths) {
         let it = el.value_mut();
         v.visit_expr_path_mut(it);
     }
     skip!(node.semi);
+    skip!(node.warning);
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
@@ -2824,6 +2838,20 @@ where
     v.visit_type_mut(&mut node.type_);
     skip!(node.eq_token);
     v.visit_expr_lit_mut(&mut node.expr_lit);
+}
+pub fn visit_guard_ensures_mut<V>(v: &mut V, node: &mut crate::GuardEnsures)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.token);
+    v.visit_specification_mut(&mut node.exprs);
+}
+pub fn visit_guard_requires_mut<V>(v: &mut V, node: &mut crate::GuardRequires)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.token);
+    v.visit_specification_mut(&mut node.exprs);
 }
 pub fn visit_ident_mut<V>(v: &mut V, node: &mut proc_macro2::Ident)
 where
@@ -4216,11 +4244,17 @@ where
     if let Some(it) = &mut node.requires {
         v.visit_requires_mut(it);
     }
+    if let Some(it) = &mut node.guard_requires {
+        v.visit_guard_requires_mut(it);
+    }
     if let Some(it) = &mut node.recommends {
         v.visit_recommends_mut(it);
     }
     if let Some(it) = &mut node.ensures {
         v.visit_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.guard_ensures {
+        v.visit_guard_ensures_mut(it);
     }
     if let Some(it) = &mut node.returns {
         v.visit_returns_mut(it);

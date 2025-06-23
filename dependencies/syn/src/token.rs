@@ -753,8 +753,10 @@ define_keywords! {
     "ghost"       pub struct Ghost
     "tracked"     pub struct Tracked
     "requires"    pub struct Requires
+    "guard_requires"    pub struct GuardRequires
     "recommends"  pub struct Recommends
     "ensures"     pub struct Ensures
+    "guard_ensures"    pub struct GuardEnsures
     "returns"     pub struct Returns
     "decreases"   pub struct Decreases
     "with"        pub struct With
@@ -1042,8 +1044,10 @@ macro_rules! Token {
     [ghost]       => { $crate::token::Ghost };
     [tracked]     => { $crate::token::Tracked };
     [requires]    => { $crate::token::Requires };
+    [guard_requires]    => { $crate::token::GuardRequires };
     [recommends]  => { $crate::token::Recommends };
     [ensures]     => { $crate::token::Ensures };
+    [guard_ensures]    => { $crate::token::GuardEnsures };
     [returns]     => { $crate::token::Returns };
     [decreases]   => { $crate::token::Decreases };
     [with]   => { $crate::token::With };

@@ -93,8 +93,10 @@ impl PartialEq for crate::AssumeSpecification {
             && self.generics == other.generics && self.qself == other.qself
             && self.path == other.path && self.inputs == other.inputs
             && self.output == other.output && self.requires == other.requires
-            && self.ensures == other.ensures && self.returns == other.returns
-            && self.invariants == other.invariants && self.unwind == other.unwind
+            && self.guard_requires == other.guard_requires
+            && self.ensures == other.ensures && self.guard_ensures == other.guard_ensures
+            && self.returns == other.returns && self.invariants == other.invariants
+            && self.unwind == other.unwind
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -247,7 +249,8 @@ impl Eq for crate::BroadcastUse {}
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for crate::BroadcastUse {
     fn eq(&self, other: &Self) -> bool {
-        self.attrs == other.attrs && self.paths == other.paths
+        self.attrs == other.attrs && self.brace_token == other.brace_token
+            && self.paths == other.paths && self.warning == other.warning
     }
 }
 #[cfg(feature = "full")]
@@ -1328,6 +1331,22 @@ impl Eq for crate::GlobalSizeOf {}
 impl PartialEq for crate::GlobalSizeOf {
     fn eq(&self, other: &Self) -> bool {
         self.type_ == other.type_ && self.expr_lit == other.expr_lit
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::GuardEnsures {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::GuardEnsures {
+    fn eq(&self, other: &Self) -> bool {
+        self.exprs == other.exprs
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::GuardRequires {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::GuardRequires {
+    fn eq(&self, other: &Self) -> bool {
+        self.exprs == other.exprs
     }
 }
 #[cfg(feature = "full")]
@@ -2419,10 +2438,11 @@ impl Eq for crate::SignatureSpec {}
 impl PartialEq for crate::SignatureSpec {
     fn eq(&self, other: &Self) -> bool {
         self.prover == other.prover && self.requires == other.requires
+            && self.guard_requires == other.guard_requires
             && self.recommends == other.recommends && self.ensures == other.ensures
-            && self.returns == other.returns && self.decreases == other.decreases
-            && self.invariants == other.invariants && self.unwind == other.unwind
-            && self.with == other.with
+            && self.guard_ensures == other.guard_ensures && self.returns == other.returns
+            && self.decreases == other.decreases && self.invariants == other.invariants
+            && self.unwind == other.unwind && self.with == other.with
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]

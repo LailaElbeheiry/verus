@@ -15,9 +15,11 @@ pub struct Header {
     pub unwrap_parameters: Vec<UnwrapParameter>,
     pub hidden: Vec<Fun>,
     pub require: Exprs,
+    pub guard_require: Exprs,
     pub recommend: Exprs,
     pub ensure_id_typ: Option<(VarIdent, Typ)>,
     pub ensure: Exprs,
+    pub guard_ensure: Exprs,
     pub returns: Option<Expr>,
     pub invariant_except_break: Exprs,
     pub invariant: Exprs,
@@ -35,7 +37,9 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut hidden: Vec<Fun> = Vec::new();
     let mut extra_dependencies: Vec<Fun> = Vec::new();
     let mut require: Option<Exprs> = None;
+    let mut guard_require: Option<Exprs> = None;
     let mut ensure: Option<(Option<(VarIdent, Typ)>, Exprs)> = None;
+    let mut guard_ensure: Option<(Option<(VarIdent, Typ)>, Exprs)> = None;
     let mut returns: Option<Expr> = None;
     let mut recommend: Option<Exprs> = None;
     let mut invariant_except_break: Option<Exprs> = None;
@@ -75,6 +79,15 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                         }
                         require = Some(es.clone());
                     }
+                    HeaderExprX::GuardRequires(es) => {
+                        if guard_require.is_some() {
+                            return Err(error(
+                                &stmt.span,
+                                "only one call to guard_requires allowed (use guard_requires([e1, ..., en]) for multiple expressions",
+                            ));
+                        }
+                        guard_require = Some(es.clone());
+                    }
                     HeaderExprX::Recommends(es) => {
                         if recommend.is_some() {
                             return Err(error(
@@ -92,6 +105,15 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                             ));
                         }
                         ensure = Some((id_typ.clone(), es.clone()));
+                    }
+                    HeaderExprX::GuardEnsures(id_typ, es) => {
+                        if guard_ensure.is_some() {
+                            return Err(error(
+                                &stmt.span,
+                                "only one call to guard_ensures allowed (use guard_ensures([e1, ..., en]) for multiple expressions",
+                            ));
+                        }
+                        guard_ensure = Some((id_typ.clone(), es.clone()));
                     }
                     HeaderExprX::Returns(e) => {
                         if returns.is_some() {
@@ -226,8 +248,13 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     }
     *block = block[n..].to_vec();
     let require = require.unwrap_or(Arc::new(vec![]));
+    let guard_require = guard_require.unwrap_or(Arc::new(vec![]));
     let recommend = recommend.unwrap_or(Arc::new(vec![]));
     let (ensure_id_typ, ensure) = match ensure {
+        None => (None, Arc::new(vec![])),
+        Some((id_typ, es)) => (id_typ, es),
+    };
+    let (guard_ensure_id_typ, guard_ensure) = match guard_ensure {
         None => (None, Arc::new(vec![])),
         Some((id_typ, es)) => (id_typ, es),
     };
@@ -239,9 +266,11 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         no_method_body: false,
         hidden,
         require,
+        guard_require,
         recommend,
         ensure_id_typ,
         ensure,
+        guard_ensure,
         returns,
         invariant_except_break,
         invariant,

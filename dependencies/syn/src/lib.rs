@@ -555,13 +555,14 @@ pub use crate::verus::{
     Assert, AssertForall, Assume, AssumeSpecification, BigAnd, BigAndExpr, BigOr, BigOrExpr,
     BroadcastUse, Closed, ClosureArg, DataMode, Decreases, Ensures, ExprGetField, ExprHas,
     ExprHasNot, ExprIs, ExprIsNot, ExprMatches, FnMode, FnProofArg, FnProofOptions, Global,
-    GlobalInner, GlobalLayout, GlobalSizeOf, Invariant, InvariantEnsures, InvariantExceptBreak,
-    InvariantNameSet, InvariantNameSetAny, InvariantNameSetList, InvariantNameSetNone,
-    InvariantNameSetSet, ItemBroadcastGroup, LoopSpec, MatchesOpExpr, MatchesOpToken, Mode,
-    ModeExec, ModeGhost, ModeProof, ModeProofAxiom, ModeSpec, ModeSpecChecked, ModeTracked, Open,
-    OpenRestricted, Prover, Publish, Recommends, Requires, Returns, RevealHide, SignatureDecreases,
-    SignatureInvariants, SignatureSpec, SignatureSpecAttr, SignatureUnwind, Specification,
-    TypeFnProof, TypeFnSpec, Uninterp, View, WithSpecOnExpr, WithSpecOnFn,
+    GlobalInner, GlobalLayout, GlobalSizeOf, GuardEnsures, GuardRequires, Invariant, InvariantEnsures,
+    InvariantExceptBreak, InvariantNameSet, InvariantNameSetAny, InvariantNameSetList,
+    InvariantNameSetNone, InvariantNameSetSet, ItemBroadcastGroup, LoopSpec, MatchesOpExpr,
+    MatchesOpToken, Mode, ModeExec, ModeGhost, ModeProof, ModeProofAxiom, ModeSpec,
+    ModeSpecChecked, ModeTracked, Open, OpenRestricted, Prover, Publish, Recommends, Requires,
+    Returns, RevealHide, SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr,
+    SignatureUnwind, Specification, TypeFnProof, TypeFnSpec, Uninterp, View, WithSpecOnExpr,
+    WithSpecOnFn,
 };
 
 #[rustfmt::skip] // https://github.com/rust-lang/rustfmt/issues/6176

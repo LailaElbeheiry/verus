@@ -531,6 +531,12 @@ pub trait Fold {
     fn fold_global_size_of(&mut self, i: crate::GlobalSizeOf) -> crate::GlobalSizeOf {
         fold_global_size_of(self, i)
     }
+    fn fold_guard_ensures(&mut self, i: crate::GuardEnsures) -> crate::GuardEnsures {
+        fold_guard_ensures(self, i)
+    }
+    fn fold_guard_requires(&mut self, i: crate::GuardRequires) -> crate::GuardRequires {
+        fold_guard_requires(self, i)
+    }
     fn fold_ident(&mut self, i: proc_macro2::Ident) -> proc_macro2::Ident {
         fold_ident(self, i)
     }
@@ -1410,7 +1416,9 @@ where
         inputs: crate::punctuated::fold(node.inputs, f, F::fold_fn_arg),
         output: f.fold_return_type(node.output),
         requires: (node.requires).map(|it| f.fold_requires(it)),
+        guard_requires: (node.guard_requires).map(|it| f.fold_guard_requires(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
+        guard_ensures: (node.guard_ensures).map(|it| f.fold_guard_ensures(it)),
         returns: (node.returns).map(|it| f.fold_returns(it)),
         invariants: (node.invariants).map(|it| f.fold_signature_invariants(it)),
         unwind: (node.unwind).map(|it| f.fold_signature_unwind(it)),
@@ -1583,8 +1591,10 @@ where
             (node.broadcast_use_tokens).0,
             (node.broadcast_use_tokens).1,
         ),
+        brace_token: node.brace_token,
         paths: crate::punctuated::fold(node.paths, f, F::fold_expr_path),
         semi: node.semi,
+        warning: node.warning,
     }
 }
 #[cfg(feature = "full")]
@@ -2892,6 +2902,27 @@ where
         type_: f.fold_type(node.type_),
         eq_token: node.eq_token,
         expr_lit: f.fold_expr_lit(node.expr_lit),
+    }
+}
+pub fn fold_guard_ensures<F>(f: &mut F, node: crate::GuardEnsures) -> crate::GuardEnsures
+where
+    F: Fold + ?Sized,
+{
+    crate::GuardEnsures {
+        token: node.token,
+        exprs: f.fold_specification(node.exprs),
+    }
+}
+pub fn fold_guard_requires<F>(
+    f: &mut F,
+    node: crate::GuardRequires,
+) -> crate::GuardRequires
+where
+    F: Fold + ?Sized,
+{
+    crate::GuardRequires {
+        token: node.token,
+        exprs: f.fold_specification(node.exprs),
     }
 }
 pub fn fold_ident<F>(f: &mut F, node: proc_macro2::Ident) -> proc_macro2::Ident
@@ -4342,8 +4373,10 @@ where
     crate::SignatureSpec {
         prover: (node.prover).map(|it| f.fold_prover(it)),
         requires: (node.requires).map(|it| f.fold_requires(it)),
+        guard_requires: (node.guard_requires).map(|it| f.fold_guard_requires(it)),
         recommends: (node.recommends).map(|it| f.fold_recommends(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
+        guard_ensures: (node.guard_ensures).map(|it| f.fold_guard_ensures(it)),
         returns: (node.returns).map(|it| f.fold_returns(it)),
         decreases: (node.decreases).map(|it| f.fold_signature_decreases(it)),
         invariants: (node.invariants).map(|it| f.fold_signature_invariants(it)),

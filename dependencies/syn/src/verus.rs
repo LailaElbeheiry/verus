@@ -134,6 +134,13 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct GuardRequires {
+        pub token: Token![guard_requires],
+        pub exprs: Specification,
+    }
+}
+
+ast_struct! {
     pub struct Recommends {
         pub token: Token![recommends],
         pub exprs: Specification,
@@ -145,6 +152,13 @@ ast_struct! {
     pub struct Ensures {
         pub attrs: Vec<Attribute>,
         pub token: Token![ensures],
+        pub exprs: Specification,
+    }
+}
+
+ast_struct! {
+    pub struct GuardEnsures {
+        pub token: Token![guard_ensures],
         pub exprs: Specification,
     }
 }
@@ -262,8 +276,10 @@ ast_struct! {
         // When adding Verus fields here, update erase_spec_fields:
         pub prover: Option<Prover>,
         pub requires: Option<Requires>,
+        pub guard_requires: Option<GuardRequires>,
         pub recommends: Option<Recommends>,
         pub ensures: Option<Ensures>,
+        pub guard_ensures: Option<GuardEnsures>,
         pub returns: Option<Returns>,
         pub decreases: Option<SignatureDecreases>,
         pub invariants: Option<SignatureInvariants>,
@@ -275,9 +291,10 @@ ast_struct! {
 impl SignatureSpec {
     pub fn erase_spec_fields(&mut self) {
         self.prover = None;
+        self.guard_requires = None;
         self.requires = None;
         self.recommends = None;
-        self.ensures = None;
+        self.guard_ensures = None;
         self.returns = None;
         self.decreases = None;
         self.invariants = None;
@@ -378,7 +395,9 @@ ast_struct! {
         pub output: ReturnType,
         // REVIEW: consider replacing these with SignatureSpec
         pub requires: Option<Requires>,
+        pub guard_requires: Option<GuardRequires>,
         pub ensures: Option<Ensures>,
+        pub guard_ensures: Option<GuardEnsures>,
         pub returns: Option<Returns>,
         pub invariants: Option<SignatureInvariants>,
         pub unwind: Option<SignatureUnwind>,
@@ -690,7 +709,9 @@ pub mod parsing {
                 || input.peek(Token![invariant_except_break])
                 || input.peek(Token![invariant])
                 || input.peek(Token![invariant_ensures])
+                || input.peek(Token![guard_requires])
                 || input.peek(Token![ensures])
+                || input.peek(Token![guard_ensures])
                 || input.peek(Token![returns])
                 || input.peek(Token![decreases])
                 || input.peek(Token![via])
@@ -715,6 +736,9 @@ pub mod parsing {
                 }
                 if input.peek2(Token![ensures]) {
                     return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'ensures' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
+                if input.peek2(Token![guard_requires]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'guard_requires' (if you meant this block to be part of the specification, try parenthesizing it)"));
                 }
                 if input.peek2(Token![opens_invariants]) {
                     return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'opens_invariants' (if you meant this block to be part of the specification, try parenthesizing it)"));
@@ -759,6 +783,16 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for GuardRequires {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(GuardRequires {
+                token: input.parse()?,
+                exprs: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Recommends {
         fn parse(input: ParseStream) -> Result<Self> {
             let token = input.parse()?;
@@ -789,6 +823,15 @@ pub mod parsing {
         }
     }
 
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for GuardEnsures {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(GuardEnsures {
+                token: input.parse()?,
+                exprs: input.parse()?,
+            })
+        }
+    }
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Returns {
         fn parse(input: ParseStream) -> Result<Self> {
@@ -985,6 +1028,17 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<GuardRequires> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![guard_requires]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Option<Recommends> {
         fn parse(input: ParseStream) -> Result<Self> {
             if input.peek(Token![recommends]) {
@@ -999,6 +1053,17 @@ pub mod parsing {
     impl Parse for Option<Ensures> {
         fn parse(input: ParseStream) -> Result<Self> {
             if input.peek(Token![ensures]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<GuardEnsures> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![guard_ensures]) {
                 input.parse().map(Some)
             } else {
                 Ok(None)
@@ -1089,8 +1154,10 @@ pub mod parsing {
             let prover: Option<Prover> = input.parse()?;
             let with: Option<WithSpecOnFn> = input.parse()?;
             let requires: Option<Requires> = input.parse()?;
+            let guard_requires: Option<GuardRequires> = input.parse()?;
             let recommends: Option<Recommends> = input.parse()?;
             let ensures: Option<Ensures> = input.parse()?;
+            let guard_ensures: Option<GuardEnsures> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
             let decreases: Option<SignatureDecreases> = input.parse()?;
             let invariants: Option<SignatureInvariants> = input.parse()?;
@@ -1099,8 +1166,10 @@ pub mod parsing {
             Ok(SignatureSpec {
                 prover,
                 requires,
+                guard_requires,
                 recommends,
                 ensures,
+                guard_ensures,
                 returns,
                 decreases,
                 invariants,
@@ -1378,7 +1447,9 @@ pub mod parsing {
             generics.where_clause = input.parse()?;
 
             let requires: Option<Requires> = input.parse()?;
+            let guard_requires: Option<GuardRequires> = input.parse()?;
             let ensures: Option<Ensures> = input.parse()?;
+            let guard_ensures: Option<GuardEnsures> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
             let invariants: Option<SignatureInvariants> = input.parse()?;
             let unwind: Option<SignatureUnwind> = input.parse()?;
@@ -1397,7 +1468,9 @@ pub mod parsing {
                 inputs,
                 output,
                 requires,
+                guard_requires,
                 ensures,
+                guard_ensures,
                 returns,
                 invariants,
                 unwind,
@@ -1650,6 +1723,14 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for GuardRequires {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.exprs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for Recommends {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
@@ -1664,6 +1745,15 @@ mod printing {
             self.exprs.to_tokens(tokens);
         }
     }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for GuardEnsures {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.exprs.to_tokens(tokens);
+        }
+    }
+
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for Returns {
@@ -1774,6 +1864,7 @@ mod printing {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.prover.to_tokens(tokens);
             self.requires.to_tokens(tokens);
+            self.guard_requires.to_tokens(tokens);
             self.recommends.to_tokens(tokens);
             self.ensures.to_tokens(tokens);
             self.returns.to_tokens(tokens);
@@ -2119,6 +2210,7 @@ mod printing {
             self.generics.where_clause.to_tokens(tokens);
 
             self.requires.to_tokens(tokens);
+            self.guard_requires.to_tokens(tokens);
             self.ensures.to_tokens(tokens);
             self.returns.to_tokens(tokens);
             self.invariants.to_tokens(tokens);

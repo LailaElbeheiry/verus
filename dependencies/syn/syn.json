@@ -332,9 +332,19 @@
             "syn": "Requires"
           }
         },
+        "guard_requires": {
+          "option": {
+            "syn": "GuardRequires"
+          }
+        },
         "ensures": {
           "option": {
             "syn": "Ensures"
+          }
+        },
+        "guard_ensures": {
+          "option": {
+            "syn": "GuardEnsures"
           }
         },
         "returns": {
@@ -786,6 +796,11 @@
             }
           ]
         },
+        "brace_token": {
+          "option": {
+            "group": "Brace"
+          }
+        },
         "paths": {
           "punctuated": {
             "element": {
@@ -796,6 +811,9 @@
         },
         "semi": {
           "token": "Semi"
+        },
+        "warning": {
+          "std": "bool"
         }
       }
     },
@@ -3396,6 +3414,34 @@
         },
         "expr_lit": {
           "syn": "ExprLit"
+        }
+      }
+    },
+    {
+      "ident": "GuardEnsures",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "GuardEnsures"
+        },
+        "exprs": {
+          "syn": "Specification"
+        }
+      }
+    },
+    {
+      "ident": "GuardRequires",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "GuardRequires"
+        },
+        "exprs": {
+          "syn": "Specification"
         }
       }
     },
@@ -6197,6 +6243,11 @@
             "syn": "Requires"
           }
         },
+        "guard_requires": {
+          "option": {
+            "syn": "GuardRequires"
+          }
+        },
         "recommends": {
           "option": {
             "syn": "Recommends"
@@ -6205,6 +6256,11 @@
         "ensures": {
           "option": {
             "syn": "Ensures"
+          }
+        },
+        "guard_ensures": {
+          "option": {
+            "syn": "GuardEnsures"
           }
         },
         "returns": {
@@ -7666,6 +7722,8 @@
     "Ghost": "ghost",
     "Global": "global",
     "Gt": ">",
+    "GuardEnsures": "guard_ensures",
+    "GuardRequires": "guard_requires",
     "Has": "has",
     "HasNot": "hasnt",
     "Hide": "hide",

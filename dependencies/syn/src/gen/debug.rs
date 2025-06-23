@@ -127,7 +127,9 @@ impl Debug for crate::AssumeSpecification {
         formatter.field("inputs", &self.inputs);
         formatter.field("output", &self.output);
         formatter.field("requires", &self.requires);
+        formatter.field("guard_requires", &self.guard_requires);
         formatter.field("ensures", &self.ensures);
+        formatter.field("guard_ensures", &self.guard_ensures);
         formatter.field("returns", &self.returns);
         formatter.field("invariants", &self.invariants);
         formatter.field("unwind", &self.unwind);
@@ -441,8 +443,10 @@ impl Debug for crate::BroadcastUse {
         let mut formatter = formatter.debug_struct("BroadcastUse");
         formatter.field("attrs", &self.attrs);
         formatter.field("broadcast_use_tokens", &self.broadcast_use_tokens);
+        formatter.field("brace_token", &self.brace_token);
         formatter.field("paths", &self.paths);
         formatter.field("semi", &self.semi);
+        formatter.field("warning", &self.warning);
         formatter.finish()
     }
 }
@@ -1974,6 +1978,24 @@ impl Debug for crate::GlobalSizeOf {
         formatter.finish()
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::GuardEnsures {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("GuardEnsures");
+        formatter.field("token", &self.token);
+        formatter.field("exprs", &self.exprs);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::GuardRequires {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("GuardRequires");
+        formatter.field("token", &self.token);
+        formatter.field("exprs", &self.exprs);
+        formatter.finish()
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::ImplItem {
@@ -3453,8 +3475,10 @@ impl Debug for crate::SignatureSpec {
         let mut formatter = formatter.debug_struct("SignatureSpec");
         formatter.field("prover", &self.prover);
         formatter.field("requires", &self.requires);
+        formatter.field("guard_requires", &self.guard_requires);
         formatter.field("recommends", &self.recommends);
         formatter.field("ensures", &self.ensures);
+        formatter.field("guard_ensures", &self.guard_ensures);
         formatter.field("returns", &self.returns);
         formatter.field("decreases", &self.decreases);
         formatter.field("invariants", &self.invariants);
