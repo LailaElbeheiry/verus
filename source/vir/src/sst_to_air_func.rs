@@ -535,12 +535,16 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
             (Mode::Spec, None) => Some("recommendation not met".to_string()),
             (_, None) => Some(THIS_PRE_FAILED.to_string()),
         };
+
+        // NOTE(automation) is this clone ok?
+        let mut specs = (*(func_decl_sst.reqs)).clone();
+        specs.append(&mut (*(func_decl_sst.guard_reqs)).clone());
         let _ = req_ens_to_air(
             ctx,
             &mut decl_commands,
             &func_decl_sst.req_inv_pars,
             &vec![],
-            &func_decl_sst.reqs,
+            &Arc::new(specs),
             &function.x.typ_params,
             &req_typs,
             &prefix_requires(&fun_to_air_ident(&function.x.name)),
@@ -634,12 +638,14 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
     let has_ens_pred = if function.x.attrs.broadcast_forall_only {
         false
     } else {
+        let mut specs = (*(func_decl_sst.enss)).clone();
+        specs.append(&mut (*(func_decl_sst.guard_enss)).clone());
         req_ens_to_air(
             ctx,
             &mut decl_commands,
             &func_decl_sst.ens_pars,
             &ens_typing_invs,
-            &func_decl_sst.enss,
+            &Arc::new(specs),
             &function.x.typ_params,
             &Arc::new(ens_typs),
             &prefix_ensures(&fun_to_air_ident(&function.x.name)),

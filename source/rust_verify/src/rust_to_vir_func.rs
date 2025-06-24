@@ -144,6 +144,8 @@ fn handle_autospec<'tcx>(
                 ens_has_return: false,
                 require: functionx.require.clone(), // requires becomes recommends
                 ensure: Arc::new(vec![]),
+                guard_require: Arc::new(vec![]), // TODO(automation) handle autospecs
+                guard_ensure: Arc::new(vec![]),  // TODO(automation) handle autospecs
                 returns: None,
                 decrease: Arc::new(vec![]),
                 decrease_when: None,
@@ -1143,6 +1145,9 @@ pub(crate) fn check_item_fn<'tcx>(
     if mode == Mode::Spec && (header.require.len() + header.ensure.len()) > 0 {
         return err_span(sig.span, "spec functions cannot have requires/ensures");
     }
+    if mode == Mode::Spec && (header.guard_require.len() + header.guard_ensure.len()) > 0 {
+        return err_span(sig.span, "spec functions cannot have guard_requires/guard_ensures");
+    }
     if mode == Mode::Spec && header.returns.is_some() {
         return err_span(sig.span, "spec functions cannot have `returns` clause");
     }
@@ -1386,6 +1391,8 @@ pub(crate) fn check_item_fn<'tcx>(
         require: if mode == Mode::Spec { Arc::new(recommend) } else { header.require },
         returns: header.returns,
         ensure: ensure,
+        guard_require: header.guard_require,
+        guard_ensure: header.guard_ensure,
         decrease: header.decrease,
         decrease_when: header.decrease_when,
         decrease_by: header.decrease_by,
@@ -1468,6 +1475,8 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             ens_has_return,
             require,
             ensure,
+            guard_require,
+            guard_ensure,
             returns,
             decrease,
             decrease_when,
@@ -1538,6 +1547,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
         ret = ret
             .new_x(vir::ast::ParamX { typ: subst_typ(&typ_substs, &ret.x.typ), ..ret.x.clone() });
 
+        // TODO(automation): should we raise an error here?
         unsupported_err_unless!(require.len() == 0, span, "requires clauses");
         unsupported_err_unless!(ensure.len() == 0, span, "ensures clauses");
         unsupported_err_unless!(returns.is_some(), span, "returns clauses");
@@ -1565,6 +1575,8 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             ens_has_return,
             require,
             ensure,
+            guard_require,
+            guard_ensure,
             returns,
             decrease,
             decrease_when,
@@ -2047,6 +2059,9 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     if header.require.len() + header.recommend.len() > 0 {
         return err_span(span, "consts cannot have requires/recommends");
     }
+    if header.guard_require.len() + header.guard_ensure.len() > 0 {
+        return err_span(span, "consts cannot have guard_requires/guard-ensures");
+    }
     if ret_mode == Mode::Spec && header.ensure.len() > 0 {
         return err_span(span, "spec consts cannot have ensures");
     }
@@ -2110,6 +2125,8 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         ens_has_return,
         require: Arc::new(vec![]),
         ensure,
+        guard_require: Arc::new(vec![]),
+        guard_ensure: Arc::new(vec![]),
         returns: None,
         decrease: Arc::new(vec![]),
         decrease_when: None,
@@ -2230,6 +2247,8 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         ens_has_return,
         require: Arc::new(vec![]),
         ensure: Arc::new(vec![]),
+        guard_require: Arc::new(vec![]),
+        guard_ensure: Arc::new(vec![]),
         returns: None,
         decrease: Arc::new(vec![]),
         decrease_when: None,

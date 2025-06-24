@@ -435,6 +435,8 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         ens_has_return: _,
         require,
         ensure,
+        guard_require,
+        guard_ensure,
         returns,
         decrease,
         decrease_when,
@@ -501,6 +503,8 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
     methodx.ret = ret;
     methodx.require = require;
     methodx.ensure = ensure;
+    methodx.guard_require = guard_require;
+    methodx.guard_ensure = guard_ensure;
     methodx.returns = returns;
     methodx.decrease = decrease;
     methodx.decrease_when = decrease_when;

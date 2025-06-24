@@ -936,6 +936,8 @@ fn visit_func_decl_sst(
         post_pars,
         reqs,
         enss,
+        guard_reqs,
+        guard_enss,
         inv_masks,
         unwind_condition,
         fndef_axioms,
@@ -944,6 +946,7 @@ fn visit_func_decl_sst(
     state.types.push_scope(true);
     let req_inv_pars = visit_and_insert_pars(ctx, &mut state.types, poly_pars, req_inv_pars);
     let reqs = visit_exps_native(ctx, state, reqs);
+    let guard_reqs = visit_exps_native(ctx, state, guard_reqs);
     let inv_masks =
         Arc::new(inv_masks.iter().map(|es| visit_exps_native(ctx, state, es)).collect());
     let unwind_condition = unwind_condition.as_ref().map(|e| visit_exp_native(ctx, state, e));
@@ -952,6 +955,7 @@ fn visit_func_decl_sst(
     state.types.push_scope(true);
     let ens_pars = visit_and_insert_pars(ctx, &mut state.types, poly_pars, ens_pars);
     let enss = visit_exps_native(ctx, state, enss);
+    let guard_enss = visit_exps_native(ctx, state, guard_enss);
     state.types.pop_scope();
 
     state.types.push_scope(true);
@@ -965,6 +969,8 @@ fn visit_func_decl_sst(
         post_pars,
         reqs,
         enss,
+        guard_reqs,
+        guard_enss,
         inv_masks,
         unwind_condition,
         fndef_axioms,

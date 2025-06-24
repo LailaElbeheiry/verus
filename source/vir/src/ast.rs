@@ -1134,6 +1134,8 @@ pub struct FunctionX {
     pub require: Exprs,
     /// Postconditions (proof/exec functions only)
     pub ensure: Exprs,
+    pub guard_require: Exprs,
+    pub guard_ensure: Exprs,
     /// Expression in the 'returns' clause
     pub returns: Option<Expr>,
     /// Decreases clause to ensure recursive function termination

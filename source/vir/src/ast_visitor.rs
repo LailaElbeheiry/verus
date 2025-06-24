@@ -635,6 +635,8 @@ where
         ret,
         require,
         ensure,
+        guard_require,
+        guard_ensure,
         ens_has_return: _,
         returns,
         decrease,
@@ -657,6 +659,9 @@ where
     for e in require.iter() {
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
+    for e in guard_require.iter() {
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+    }
 
     map.push_scope(true);
     if function.x.ens_has_return {
@@ -664,6 +669,9 @@ where
             .insert(ret.x.name.clone(), ScopeEntry::new_outer_param_ret(&ret.x.typ, false, true));
     }
     for e in ensure.iter() {
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+    }
+    for e in guard_ensure.iter() {
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
     map.pop_scope();
@@ -1251,6 +1259,8 @@ where
         ens_has_return,
         require,
         ensure,
+        guard_require,
+        guard_ensure,
         returns,
         decrease,
         decrease_when,
@@ -1306,6 +1316,8 @@ where
     let ret = map_param_visitor(ret, env, ft)?;
     let require =
         Arc::new(vec_map_result(require, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
+    let guard_require =
+        Arc::new(vec_map_result(guard_require, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
 
     map.push_scope(true);
     if function.x.ens_has_return {
@@ -1314,6 +1326,8 @@ where
     }
     let ensure =
         Arc::new(vec_map_result(ensure, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
+    let guard_ensure =
+        Arc::new(vec_map_result(guard_ensure, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
     map.pop_scope();
 
     let returns = match returns {
@@ -1384,6 +1398,8 @@ where
         ens_has_return: *ens_has_return,
         require,
         ensure,
+        guard_require,
+        guard_ensure,
         returns,
         decrease,
         decrease_when,

@@ -302,7 +302,11 @@ pub fn func_decl_to_sst(
     function: &Function,
 ) -> Result<FuncDeclSst, VirErr> {
     let (pars, reqs) = req_ens_to_sst(ctx, diagnostics, function, &function.x.require, true)?;
+    let (_pars, guard_reqs) =
+        req_ens_to_sst(ctx, diagnostics, function, &function.x.guard_require, true)?;
     let (ens_pars, enss) = req_ens_to_sst(ctx, diagnostics, function, &function.x.ensure, false)?;
+    let (_ens_pars, guard_enss) =
+        req_ens_to_sst(ctx, diagnostics, function, &function.x.guard_ensure, false)?;
     let post_pars = params_to_pre_post_pars(&function.x.params, false);
 
     let mut inv_masks: Vec<Exps> = Vec::new();
@@ -390,6 +394,8 @@ pub fn func_decl_to_sst(
         post_pars,
         reqs: Arc::new(reqs),
         enss: Arc::new(enss),
+        guard_reqs: Arc::new(guard_reqs),
+        guard_enss: Arc::new(guard_enss),
         inv_masks: Arc::new(inv_masks),
         unwind_condition,
         fndef_axioms: Arc::new(fndef_axiom_exps),
@@ -737,7 +743,7 @@ pub fn func_def_to_sst(
 
     // Requires: take from trait method if it exists
     let requires = specs_function.x.require.clone();
-    for r in requires.iter() {
+    for r in requires.iter().chain(specs_function.x.guard_require.iter()) {
         let r = lo_specs.lower_pure(ctx, &mut state, r, &mut req_stms)?;
         if ctx.checking_spec_preconditions() {
             req_stms.push(Spanned::new(r.span.clone(), StmX::Assume(r)));
@@ -765,7 +771,8 @@ pub fn func_def_to_sst(
     }
 
     // Ensures: combine from both sources
-    for expr in lo_current.function.x.ensure.iter() {
+    for expr in lo_current.function.x.ensure.iter().chain(lo_current.function.x.guard_ensure.iter())
+    {
         let exp = lo_current.lower_pure(ctx, &mut state, expr, &mut ens_spec_precondition_stms)?;
         if !ctx.checking_spec_preconditions() {
             let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
@@ -773,7 +780,14 @@ pub fn func_def_to_sst(
         }
     }
     if let Some(lo_inheritance) = &lo_inheritance {
-        for expr in lo_inheritance.function.x.ensure.clone().iter() {
+        for expr in lo_inheritance
+            .function
+            .x
+            .ensure
+            .clone()
+            .iter()
+            .chain(lo_inheritance.function.x.guard_ensure.iter())
+        {
             let exp = lo_inheritance.lower_pure(
                 ctx,
                 &mut state,
@@ -922,8 +936,8 @@ pub fn function_to_sst(
 
     let has = FunctionSstHas {
         has_body: function.x.body.is_some(),
-        has_requires: function.x.require.len() > 0,
-        has_ensures: function.x.ensure.len() > 0,
+        has_requires: function.x.require.len() > 0 || function.x.guard_require.len() > 0,
+        has_ensures: function.x.ensure.len() > 0 || function.x.guard_ensure.len() > 0,
         has_decrease: function.x.decrease.len() > 0,
         has_mask_spec: function.x.mask_spec.is_some(),
         has_return_name: function.x.ens_has_return,

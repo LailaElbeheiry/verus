@@ -427,6 +427,8 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                     ens_has_return: default_function.x.ens_has_return,
                     require: Arc::new(vec![]),
                     ensure: Arc::new(vec![]),
+                    guard_require: Arc::new(vec![]),
+                    guard_ensure: Arc::new(vec![]),
                     returns: None,
                     decrease: Arc::new(vec![]),
                     decrease_when: None,
