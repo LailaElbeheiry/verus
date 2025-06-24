@@ -254,7 +254,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         None => (None, Arc::new(vec![])),
         Some((id_typ, es)) => (id_typ, es),
     };
-    let (guard_ensure_id_typ, guard_ensure) = match guard_ensure {
+    let (_, guard_ensure) = match guard_ensure {
         None => (None, Arc::new(vec![])),
         Some((id_typ, es)) => (id_typ, es),
     };

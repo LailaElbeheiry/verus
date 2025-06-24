@@ -15,7 +15,7 @@ use crate::util::{err_span, vec_map, vec_map_result, vir_err_span_str};
 use crate::verus_items::{
     self, ArithItem, AssertItem, BinaryOpItem, BuiltinFunctionItem, ChainedItem, CompilableOprItem,
     DirectiveItem, EqualityItem, ExprItem, QuantItem, RustItem, SpecArithItem,
-    SpecGhostTrackedItem, SpecItem, SpecLiteralItem, SpecOrdItem, UnaryOpItem, VerusItem,
+    SpecGhostTrackedItem, SpecItem, SpecLiteralItem, SpecOrdItem, UnaryOpItem, VerusItem, VstdItem,
 };
 use crate::{unsupported_err, unsupported_err_unless};
 use air::ast_util::str_ident;
@@ -376,6 +376,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             | SpecItem::Recommends
             | SpecItem::OpensInvariants
             | SpecItem::Returns => {
+                // FIXME(automation) guard_requires are allowed to mention tracked variables
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(
                     args_len == 1,
@@ -399,16 +400,37 @@ fn verus_item_to_vir<'tcx, 'a>(
                 for (arg, vir_arg) in subargs.iter().zip(vir_args.iter()) {
                     let typ = vir::ast_util::undecorate_typ(&vir_arg.typ);
                     match spec_item {
-                        // FIXME(automation) do the guard requires require a boolean?
-                        SpecItem::Requires | SpecItem::GuardRequires | SpecItem::Recommends => {
-                            match &*typ {
-                                TypX::Bool => {}
-                                _ => {
-                                    return err_span(
-                                        arg.span,
-                                        "requires/guard_requires/recommends needs a bool expression",
-                                    );
+                        SpecItem::Requires | SpecItem::Recommends => match &*typ {
+                            TypX::Bool => {}
+                            _ => {
+                                return err_span(
+                                    arg.span,
+                                    "requires/guard/recommends needs a bool expression",
+                                );
+                            }
+                        },
+                        SpecItem::GuardRequires => {
+                            let mut is_guards = false;
+                            if let ExprKind::Call(fun, _) = arg.kind {
+                                match &fun.kind {
+                                    ExprKind::Path(qpath) => {
+                                        if let rustc_hir::def::Res::Def(_, def_id) =
+                                            bctx.types.qpath_res(&qpath, fun.hir_id)
+                                        {
+                                            is_guards = matches!(
+                                                bctx.ctxt.verus_items.id_to_name.get(&def_id),
+                                                Some(&VerusItem::Vstd(VstdItem::Guards, _)),
+                                            );
+                                        }
+                                    }
+                                    _ => {}
                                 }
+                            }
+                            if !is_guards {
+                                return err_span(
+                                    arg.span,
+                                    "guard_requires must only contain guards assertions",
+                                );
                             }
                         }
                         SpecItem::OpensInvariants => match &*typ {
@@ -481,6 +503,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 mk_expr_span(args[0].span, ExprX::Header(header))
             }
             SpecItem::GuardEnsures => {
+                // FIXME(automation) guard_ensures are allowed to mention tracked variables
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(args_len == 1, expr.span, "expected guard_ensures", &args);
                 let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
@@ -1710,16 +1733,31 @@ fn get_ensures_arg<'tcx>(
     }
 }
 
-
 // TODO(automation) change this for checking trait implementation?
 fn get_guard_ensures_arg<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
-    if matches!(bctx.types.expr_ty_adjusted(expr).kind(), TyKind::Bool) {
+    let mut is_guards = false;
+    if let ExprKind::Call(fun, _) = expr.kind {
+        match &fun.kind {
+            ExprKind::Path(qpath) => {
+                if let rustc_hir::def::Res::Def(_, def_id) =
+                    bctx.types.qpath_res(&qpath, fun.hir_id)
+                {
+                    is_guards = matches!(
+                        bctx.ctxt.verus_items.id_to_name.get(&def_id),
+                        Some(&VerusItem::Vstd(VstdItem::Guards, _)),
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+    if is_guards {
         expr_to_vir(bctx, expr, ExprModifier::REGULAR)
     } else {
-        err_span(expr.span, "ensures needs a bool expression")
+        err_span(expr.span, "guard_ensures must only contain guards assertions")
     }
 }
 

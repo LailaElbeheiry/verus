@@ -1152,13 +1152,13 @@ pub(crate) fn check_item_fn<'tcx>(
     if mode != Mode::Exec && vattrs.external_fn_specification {
         return err_span(sig.span, "assume_specification should be 'exec'");
     }
-    if header.ensure.len() > 0 {
+    if header.guard_ensure.len() > 0 || header.ensure.len() > 0 {
         match (&header.ensure_id_typ, ret_typ_mode.as_ref()) {
             (None, None) => {}
             (None, Some(_)) => {
                 return err_span(
                     sig.span,
-                    "the return value must be named in a function with an ensures clause",
+                    "the return value must be named in a function with an ensures/guard_ensures clause",
                 );
             }
             (Some(_), None) => {

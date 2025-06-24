@@ -14,6 +14,8 @@ pub use super::set::set;
 pub use super::set::Set;
 pub use super::view::*;
 
+pub use super::guards::*;
+
 #[cfg(verus_keep_ghost)]
 pub use super::pervasive::{affirm, arbitrary, cloned, proof_from_false, spec_affirm, unreached};
 

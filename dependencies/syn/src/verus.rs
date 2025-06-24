@@ -1754,7 +1754,6 @@ mod printing {
         }
     }
 
-
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for Returns {
         fn to_tokens(&self, tokens: &mut TokenStream) {

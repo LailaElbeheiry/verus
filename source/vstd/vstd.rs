@@ -28,6 +28,7 @@ pub mod calc_macro;
 pub mod cell;
 pub mod compute;
 pub mod function;
+pub mod guards;
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash_map;
 #[cfg(all(feature = "alloc", feature = "std"))]

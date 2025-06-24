@@ -24,8 +24,8 @@ use syn_verus::visit_mut::{
 use syn_verus::{
     AssumeSpecification, Attribute, BareFnArg, BinOp, Block, DataMode, Decreases, Ensures, Expr,
     ExprBinary, ExprCall, ExprLit, ExprLoop, ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field,
-    FnArg, FnArgKind, FnMode, Global, GuardEnsures, GuardRequires, Ident, ImplItem, ImplItemFn, Invariant,
-    InvariantEnsures, InvariantExceptBreak, InvariantNameSet, InvariantNameSetList,
+    FnArg, FnArgKind, FnMode, Global, GuardEnsures, GuardRequires, Ident, ImplItem, ImplItemFn,
+    Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet, InvariantNameSetList,
     InvariantNameSetSet, Item, ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod,
     ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken,
     ModeSpec, ModeSpecChecked, Pat, PatIdent, PatType, Path, Publish, Recommends, Requires,
