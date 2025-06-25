@@ -995,8 +995,25 @@ fn check_function(
             diags,
         )?;
     }
+    for req in function.x.guard_require.iter() {
+        let msg = "'guard_requires' clause of public function";
+        let disallow_private_access = Some((&function.x.visibility, msg));
+        check_expr(
+            ctxt,
+            function,
+            req,
+            disallow_private_access,
+            Place::PreState("guard_requires"),
+            diags,
+        )?;
+    }
     for ens in function.x.ensure.iter() {
         let msg = "'ensures' clause of public function";
+        let disallow_private_access = Some((&function.x.visibility, msg));
+        check_expr(ctxt, function, ens, disallow_private_access, Place::PostState, diags)?;
+    }
+    for ens in function.x.guard_ensure.iter() {
+        let msg = "'guard_ensures' clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
         check_expr(ctxt, function, ens, disallow_private_access, Place::PostState, diags)?;
     }
