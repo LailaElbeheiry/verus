@@ -1869,8 +1869,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
         StmX::Assert(assert_id, error, expr) => {
             let air_expr = exp_to_expr(ctx, &expr, expr_ctxt)?;
             let error = match error {
-                Some(error) => error.clone(),
-                None => error_with_label(
+                Some(error) if error.note != "guards" => error.clone(),
+                _ => error_with_label(
                     &stm.span,
                     "assertion failed".to_string(),
                     "assertion failed".to_string(),

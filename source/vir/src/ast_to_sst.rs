@@ -5,12 +5,14 @@ use crate::ast::{
     UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
     VariantCheck, VirErr,
 };
-use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{QUANT_FORALL, types_equal, undecorate_typ, unit_typ};
+use crate::ast::{BuiltinSpecFun, Exprs, Path};
+use crate::ast_util::{QUANT_FORALL, path_as_vstd_name, types_equal, undecorate_typ, unit_typ};
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
-use crate::messages::{Span, ToAny, error, error_with_secondary_label, internal_error, warning};
+use crate::messages::{
+    Span, ToAny, error, error_with_secondary_label, internal_error, note, note_bare, warning,
+};
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
@@ -818,6 +820,17 @@ fn find_last_span_in_expr<'x>(expr: &'x Expr, fn_span: &'x Span) -> &'x Span {
     }
 }
 
+fn fun_is_guards(path: &Path) -> bool {
+    path_as_vstd_name(path) == Some("guards::guards".to_string())
+}
+
+fn exp_is_guards(exp: &Exp) -> bool {
+    match &exp.x {
+        ExpX::Call(CallFun::Fun(fun, _), ..) => fun_is_guards(&fun.path),
+        _ => false,
+    }
+}
+
 fn is_small_exp(exp: &Exp) -> bool {
     match &exp.x {
         ExpX::Const(_) => true,
@@ -886,6 +899,7 @@ fn stm_call(
     let mut stms: Vec<Stm> = Vec::new();
 
     let mut small_args: Vec<Exp> = Vec::new();
+    let mut is_assert_guards = false;
     for arg in args.iter() {
         if is_small_exp_or_loc(arg) {
             small_args.push(arg.clone());
@@ -1648,8 +1662,9 @@ pub(crate) fn expr_to_stm_opt(
                 // because we checked spec preconditions above with expr_to_stm_or_error
                 let exp = expr_to_pure_exp_skip_checks(ctx, state, e)?;
                 let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.assert);
+                let guards = exp_is_guards(&exp);
                 let small = is_small_exp_or_loc(&exp);
-                let exp = if small {
+                let exp = if small || guards {
                     exp.clone()
                 } else {
                     // To avoid copying exp in Assert and Assume,
@@ -1659,9 +1674,11 @@ pub(crate) fn expr_to_stm_opt(
                     stms.push(init_var(&exp.span, &temp_id, &exp));
                     temp_var
                 };
+                let msg = if guards { Some(note_bare("guards")) } else { None };
                 stms.push(Spanned::new(
                     e.span.clone(),
-                    StmX::Assert(state.next_assert_id(), None, exp.clone()),
+                    // NOTE(automation) using this message field is a hack to avoid having to add an argument to the Assert constructor
+                    StmX::Assert(state.next_assert_id(), msg, exp.clone()),
                 ));
                 stms.push(Spanned::new(e.span.clone(), StmX::Assume(exp)));
                 Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
