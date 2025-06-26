@@ -429,6 +429,7 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                     ensure: Arc::new(vec![]),
                     guard_require: Arc::new(vec![]),
                     guard_ensure: Arc::new(vec![]),
+                    guard_effects: Arc::new(vec![]),
                     returns: None,
                     decrease: Arc::new(vec![]),
                     decrease_when: None,

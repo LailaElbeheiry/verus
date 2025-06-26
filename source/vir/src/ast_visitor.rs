@@ -637,6 +637,7 @@ where
         ensure,
         guard_require,
         guard_ensure,
+        guard_effects,
         ens_has_return: _,
         returns,
         decrease,
@@ -672,6 +673,9 @@ where
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
     for e in guard_ensure.iter() {
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+    }
+    for e in guard_effects.iter() {
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
     map.pop_scope();
@@ -1261,6 +1265,7 @@ where
         ensure,
         guard_require,
         guard_ensure,
+        guard_effects,
         returns,
         decrease,
         decrease_when,
@@ -1328,6 +1333,8 @@ where
         Arc::new(vec_map_result(ensure, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
     let guard_ensure =
         Arc::new(vec_map_result(guard_ensure, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
+    let guard_effects =
+        Arc::new(vec_map_result(guard_effects, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
     map.pop_scope();
 
     let returns = match returns {
@@ -1400,6 +1407,7 @@ where
         ensure,
         guard_require,
         guard_ensure,
+        guard_effects,
         returns,
         decrease,
         decrease_when,

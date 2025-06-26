@@ -50,6 +50,9 @@ pub trait Visit<'ast> {
     fn visit_assert_forall(&mut self, i: &'ast crate::AssertForall) {
         visit_assert_forall(self, i);
     }
+    fn visit_assignment(&mut self, i: &'ast crate::Assignment) {
+        visit_assignment(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn visit_assoc_const(&mut self, i: &'ast crate::AssocConst) {
@@ -499,6 +502,9 @@ pub trait Visit<'ast> {
     }
     fn visit_global_size_of(&mut self, i: &'ast crate::GlobalSizeOf) {
         visit_global_size_of(self, i);
+    }
+    fn visit_guard_effects(&mut self, i: &'ast crate::GuardEffects) {
+        visit_guard_effects(self, i);
     }
     fn visit_guard_ensures(&mut self, i: &'ast crate::GuardEnsures) {
         visit_guard_ensures(self, i);
@@ -1247,6 +1253,14 @@ where
     skip!(node.by_token);
     full!(v.visit_block(& * node.body));
 }
+pub fn visit_assignment<'ast, V>(v: &mut V, node: &'ast crate::Assignment)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    v.visit_expr(&node.lhs);
+    skip!(node.eq_token);
+    v.visit_expr(&node.rhs);
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
 pub fn visit_assoc_const<'ast, V>(v: &mut V, node: &'ast crate::AssocConst)
@@ -1319,6 +1333,9 @@ where
     }
     if let Some(it) = &node.guard_ensures {
         v.visit_guard_ensures(it);
+    }
+    if let Some(it) = &node.guard_effects {
+        v.visit_guard_effects(it);
     }
     if let Some(it) = &node.returns {
         v.visit_returns(it);
@@ -2960,6 +2977,16 @@ where
     skip!(node.eq_token);
     v.visit_expr_lit(&node.expr_lit);
 }
+pub fn visit_guard_effects<'ast, V>(v: &mut V, node: &'ast crate::GuardEffects)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.token);
+    for el in Punctuated::pairs(&node.exprs) {
+        let it = el.value();
+        v.visit_assignment(it);
+    }
+}
 pub fn visit_guard_ensures<'ast, V>(v: &mut V, node: &'ast crate::GuardEnsures)
 where
     V: Visit<'ast> + ?Sized,
@@ -4450,6 +4477,9 @@ where
     }
     if let Some(it) = &node.guard_ensures {
         v.visit_guard_ensures(it);
+    }
+    if let Some(it) = &node.guard_effects {
+        v.visit_guard_effects(it);
     }
     if let Some(it) = &node.returns {
         v.visit_returns(it);

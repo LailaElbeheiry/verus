@@ -24,14 +24,15 @@ use syn_verus::visit_mut::{
 use syn_verus::{
     AssumeSpecification, Attribute, BareFnArg, BinOp, Block, DataMode, Decreases, Ensures, Expr,
     ExprBinary, ExprCall, ExprLit, ExprLoop, ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field,
-    FnArg, FnArgKind, FnMode, Global, GuardEnsures, GuardRequires, Ident, ImplItem, ImplItemFn,
-    Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet, InvariantNameSetList,
-    InvariantNameSetSet, Item, ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod,
-    ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken,
-    ModeSpec, ModeSpecChecked, Pat, PatIdent, PatType, Path, Publish, Recommends, Requires,
-    ReturnType, Returns, Signature, SignatureDecreases, SignatureInvariants, SignatureSpec,
-    SignatureSpecAttr, SignatureUnwind, Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof,
-    TypeFnSpec, TypePath, UnOp, Visibility, braced, bracketed, parenthesized, parse_macro_input,
+    FnArg, FnArgKind, FnMode, Global, GuardEffects, GuardEnsures, GuardRequires, Ident, ImplItem,
+    ImplItemFn, Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet,
+    InvariantNameSetList, InvariantNameSetSet, Item, ItemBroadcastGroup, ItemConst, ItemEnum,
+    ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local,
+    MatchesOpExpr, MatchesOpToken, ModeSpec, ModeSpecChecked, Pat, PatIdent, PatType, Path,
+    Publish, Recommends, Requires, ReturnType, Returns, Signature, SignatureDecreases,
+    SignatureInvariants, SignatureSpec, SignatureSpecAttr, SignatureUnwind, Stmt, Token, TraitItem,
+    TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath, UnOp, Visibility, braced, bracketed,
+    parenthesized, parse_macro_input,
 };
 
 const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -480,6 +481,7 @@ impl Visitor {
         let recommends = self.take_ghost(&mut spec.recommends);
         let ensures = self.take_ghost(&mut spec.ensures);
         let guard_ensures = self.take_ghost(&mut spec.guard_ensures);
+        let guard_effects = self.take_ghost(&mut spec.guard_effects);
         let returns = self.take_ghost(&mut spec.returns);
         let decreases = self.take_ghost(&mut spec.decreases);
         let opens_invariants = self.take_ghost(&mut spec.invariants);
@@ -633,6 +635,42 @@ impl Visitor {
                         Some(Semi { spans: [token.span] }),
                     ));
                 }
+            }
+        }
+        if let Some(GuardEffects { token, exprs: mut assignments }) = guard_effects {
+            let mut exprs = Vec::new();
+            if assignments.len() > 0 {
+                for assignment in assignments.iter_mut() {
+                    self.visit_expr_mut(&mut assignment.lhs);
+                    self.visit_expr_mut(&mut assignment.rhs);
+                    let lhs = assignment.lhs.clone();
+                    let rhs = assignment.rhs.clone();
+                    exprs.push(Expr::Verbatim(quote! { (#lhs, #rhs) }));
+                }
+            }
+            if let Some((ref p, ref ty)) = ret_pat {
+                if let Some(ref final_ret_pat) = final_ret_pat {
+                    for expr in exprs.iter_mut() {
+                        *expr = Expr::Verbatim(
+                            quote_spanned! {token.span => {let #final_ret_pat = #p; #expr}},
+                        )
+                    }
+                }
+                spec_stmts.push(Stmt::Expr(
+                    Expr::Verbatim(
+                        quote_spanned_builtin!(builtin, token.span => #builtin::guard_effects(|#p: #ty| (#(#exprs ,)*))),
+                    ),
+                    Some(Semi { spans: [token.span] }),
+                ));
+            } else {
+                spec_stmts.push(Stmt::Expr(
+                    Expr::Verbatim(
+                        // HACK to make sure that the guard_effects call type-checks
+                        // TODO(automation) remove closure
+                        quote_spanned_builtin!(builtin, token.span => #builtin::guard_effects(|| (#(#exprs ,)*))),
+                    ),
+                    Some(Semi { spans: [token.span] }),
+                ));
             }
         }
         if let Some(Returns { token, mut exprs }) = returns {
@@ -1665,6 +1703,7 @@ impl Visitor {
             guard_requires,
             ensures,
             guard_ensures,
+            guard_effects,
             returns,
             invariants,
             unwind,
@@ -1694,6 +1733,7 @@ impl Visitor {
                 recommends: None,
                 ensures: ensures,
                 guard_ensures: guard_ensures,
+                guard_effects: guard_effects,
                 returns: returns,
                 decreases: None,
                 invariants: invariants,

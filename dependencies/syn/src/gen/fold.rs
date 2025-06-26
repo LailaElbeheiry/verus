@@ -49,6 +49,9 @@ pub trait Fold {
     fn fold_assert_forall(&mut self, i: crate::AssertForall) -> crate::AssertForall {
         fold_assert_forall(self, i)
     }
+    fn fold_assignment(&mut self, i: crate::Assignment) -> crate::Assignment {
+        fold_assignment(self, i)
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn fold_assoc_const(&mut self, i: crate::AssocConst) -> crate::AssocConst {
@@ -530,6 +533,9 @@ pub trait Fold {
     }
     fn fold_global_size_of(&mut self, i: crate::GlobalSizeOf) -> crate::GlobalSizeOf {
         fold_global_size_of(self, i)
+    }
+    fn fold_guard_effects(&mut self, i: crate::GuardEffects) -> crate::GuardEffects {
+        fold_guard_effects(self, i)
     }
     fn fold_guard_ensures(&mut self, i: crate::GuardEnsures) -> crate::GuardEnsures {
         fold_guard_ensures(self, i)
@@ -1360,6 +1366,16 @@ where
         body: Box::new(full!(f.fold_block(* node.body))),
     }
 }
+pub fn fold_assignment<F>(f: &mut F, node: crate::Assignment) -> crate::Assignment
+where
+    F: Fold + ?Sized,
+{
+    crate::Assignment {
+        lhs: f.fold_expr(node.lhs),
+        eq_token: node.eq_token,
+        rhs: f.fold_expr(node.rhs),
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
 pub fn fold_assoc_const<F>(f: &mut F, node: crate::AssocConst) -> crate::AssocConst
@@ -1419,6 +1435,7 @@ where
         guard_requires: (node.guard_requires).map(|it| f.fold_guard_requires(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
         guard_ensures: (node.guard_ensures).map(|it| f.fold_guard_ensures(it)),
+        guard_effects: (node.guard_effects).map(|it| f.fold_guard_effects(it)),
         returns: (node.returns).map(|it| f.fold_returns(it)),
         invariants: (node.invariants).map(|it| f.fold_signature_invariants(it)),
         unwind: (node.unwind).map(|it| f.fold_signature_unwind(it)),
@@ -2904,6 +2921,15 @@ where
         expr_lit: f.fold_expr_lit(node.expr_lit),
     }
 }
+pub fn fold_guard_effects<F>(f: &mut F, node: crate::GuardEffects) -> crate::GuardEffects
+where
+    F: Fold + ?Sized,
+{
+    crate::GuardEffects {
+        token: node.token,
+        exprs: crate::punctuated::fold(node.exprs, f, F::fold_assignment),
+    }
+}
 pub fn fold_guard_ensures<F>(f: &mut F, node: crate::GuardEnsures) -> crate::GuardEnsures
 where
     F: Fold + ?Sized,
@@ -4377,6 +4403,7 @@ where
         recommends: (node.recommends).map(|it| f.fold_recommends(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
         guard_ensures: (node.guard_ensures).map(|it| f.fold_guard_ensures(it)),
+        guard_effects: (node.guard_effects).map(|it| f.fold_guard_effects(it)),
         returns: (node.returns).map(|it| f.fold_returns(it)),
         decreases: (node.decreases).map(|it| f.fold_signature_decreases(it)),
         invariants: (node.invariants).map(|it| f.fold_signature_invariants(it)),

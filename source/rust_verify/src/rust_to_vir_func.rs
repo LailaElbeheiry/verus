@@ -146,6 +146,7 @@ fn handle_autospec<'tcx>(
                 ensure: Arc::new(vec![]),
                 guard_require: Arc::new(vec![]), // TODO(automation) handle autospecs
                 guard_ensure: Arc::new(vec![]),  // TODO(automation) handle autospecs
+                guard_effects: Arc::new(vec![]), // TODO(automation) handle autospecs
                 returns: None,
                 decrease: Arc::new(vec![]),
                 decrease_when: None,
@@ -1145,7 +1146,9 @@ pub(crate) fn check_item_fn<'tcx>(
     if mode == Mode::Spec && (header.require.len() + header.ensure.len()) > 0 {
         return err_span(sig.span, "spec functions cannot have requires/ensures");
     }
-    if mode == Mode::Spec && (header.guard_require.len() + header.guard_ensure.len()) > 0 {
+    if mode == Mode::Spec
+        && (header.guard_require.len() + header.guard_ensure.len() + header.guard_effects.len()) > 0
+    {
         return err_span(sig.span, "spec functions cannot have guard_requires/guard_ensures");
     }
     if mode == Mode::Spec && header.returns.is_some() {
@@ -1157,13 +1160,13 @@ pub(crate) fn check_item_fn<'tcx>(
     if mode != Mode::Exec && vattrs.external_fn_specification {
         return err_span(sig.span, "assume_specification should be 'exec'");
     }
-    if header.guard_ensure.len() > 0 || header.ensure.len() > 0 {
+    if header.guard_ensure.len() > 0 || header.ensure.len() > 0 || header.guard_effects.len() > 0 {
         match (&header.ensure_id_typ, ret_typ_mode.as_ref()) {
             (None, None) => {}
             (None, Some(_)) => {
                 return err_span(
                     sig.span,
-                    "the return value must be named in a function with an ensures/guard_ensures clause",
+                    "the return value must be named in a function with an ensures/guard_ensures/guard_effects clause",
                 );
             }
             (Some(_), None) => {
@@ -1393,6 +1396,7 @@ pub(crate) fn check_item_fn<'tcx>(
         ensure: ensure,
         guard_require: header.guard_require,
         guard_ensure: header.guard_ensure,
+        guard_effects: header.guard_effects,
         decrease: header.decrease,
         decrease_when: header.decrease_when,
         decrease_by: header.decrease_by,
@@ -1477,6 +1481,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             ensure,
             guard_require,
             guard_ensure,
+            guard_effects,
             returns,
             decrease,
             decrease_when,
@@ -1577,6 +1582,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             ensure,
             guard_require,
             guard_ensure,
+            guard_effects,
             returns,
             decrease,
             decrease_when,
@@ -2059,7 +2065,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     if header.require.len() + header.recommend.len() > 0 {
         return err_span(span, "consts cannot have requires/recommends");
     }
-    if header.guard_require.len() + header.guard_ensure.len() > 0 {
+    if header.guard_require.len() + header.guard_ensure.len() + header.guard_effects.len() > 0 {
         return err_span(span, "consts cannot have guard_requires/guard-ensures");
     }
     if ret_mode == Mode::Spec && header.ensure.len() > 0 {
@@ -2127,6 +2133,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         ensure,
         guard_require: Arc::new(vec![]),
         guard_ensure: Arc::new(vec![]),
+        guard_effects: Arc::new(vec![]),
         returns: None,
         decrease: Arc::new(vec![]),
         decrease_when: None,
@@ -2249,6 +2256,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         ensure: Arc::new(vec![]),
         guard_require: Arc::new(vec![]),
         guard_ensure: Arc::new(vec![]),
+        guard_effects: Arc::new(vec![]),
         returns: None,
         decrease: Arc::new(vec![]),
         decrease_when: None,

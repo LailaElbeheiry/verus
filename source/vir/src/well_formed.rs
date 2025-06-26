@@ -1017,6 +1017,42 @@ fn check_function(
         let disallow_private_access = Some((&function.x.visibility, msg));
         check_expr(ctxt, function, ens, disallow_private_access, Place::PostState, diags)?;
     }
+    for eff in function.x.guard_effects.iter() {
+        fn is_ok(e: &Expr) -> bool {
+            match &e.x {
+                ExprX::VarLoc(_) => true,
+                ExprX::Unary(UnaryOp::CoerceMode { .. }, e1) => is_ok(e1),
+                ExprX::UnaryOpr(UnaryOpr::Field { .. }, base) => is_ok(base),
+                ExprX::Block(stmts, Some(e1)) if stmts.len() == 0 => is_ok(e1),
+                ExprX::Ghost { alloc_wrapper: false, tracked: true, expr: e1 } => is_ok(e1),
+                _ => false,
+            }
+        }
+        match &eff.x {
+            ExprX::Ctor(Dt::Tuple(2), _variant, fields, _update) => {
+                // This is a guard_effects clause for a tuple, which is allowed
+                for field in fields.iter() {
+                    // check that p is simple
+                    let is_ok = match &field.a.x {
+                        ExprX::Loc(l) => is_ok(l),
+                        ExprX::Var(_) | ExprX::VarLoc(_) | ExprX::VarAt(..) => true,
+                        _ => false,
+                    };
+                    if !is_ok {
+                        return Err(error(
+                            &field.a.span,
+                            "complex expressions in guard_effects clauses are not allowed",
+                        ));
+                    }
+                }
+            }
+            _ => {
+                unreachable!()
+            } // sanity check: guard_effects should always be a tuple
+        }
+
+        // check_expr(ctxt, function, ens, disallow_private_access, Place::PostState, diags)?;
+    }
     if let Some(r) = &function.x.returns {
         if !types_equal(&undecorate_typ(&r.typ), &undecorate_typ(&function.x.ret.x.typ)) {
             return Err(error(

@@ -66,6 +66,16 @@ impl Hash for crate::AssertForall {
         self.body.hash(state);
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::Assignment {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.lhs.hash(state);
+        self.rhs.hash(state);
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::AssocConst {
@@ -117,6 +127,7 @@ impl Hash for crate::AssumeSpecification {
         self.guard_requires.hash(state);
         self.ensures.hash(state);
         self.guard_ensures.hash(state);
+        self.guard_effects.hash(state);
         self.returns.hash(state);
         self.invariants.hash(state);
         self.unwind.hash(state);
@@ -1737,6 +1748,15 @@ impl Hash for crate::GlobalSizeOf {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::GuardEffects {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.exprs.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::GuardEnsures {
     fn hash<H>(&self, state: &mut H)
     where
@@ -3109,6 +3129,7 @@ impl Hash for crate::SignatureSpec {
         self.recommends.hash(state);
         self.ensures.hash(state);
         self.guard_ensures.hash(state);
+        self.guard_effects.hash(state);
         self.returns.hash(state);
         self.decreases.hash(state);
         self.invariants.hash(state);

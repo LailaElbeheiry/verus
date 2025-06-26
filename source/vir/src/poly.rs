@@ -938,6 +938,7 @@ fn visit_func_decl_sst(
         enss,
         guard_reqs,
         guard_enss,
+        guard_effects,
         inv_masks,
         unwind_condition,
         fndef_axioms,
@@ -971,6 +972,7 @@ fn visit_func_decl_sst(
         enss,
         guard_reqs,
         guard_enss,
+        guard_effects: guard_effects.clone(), // FIXME(automation) what should I do here?
         inv_masks,
         unwind_condition,
         fndef_axioms,

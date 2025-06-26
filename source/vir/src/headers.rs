@@ -20,6 +20,7 @@ pub struct Header {
     pub ensure_id_typ: Option<(VarIdent, Typ)>,
     pub ensure: Exprs,
     pub guard_ensure: Exprs,
+    pub guard_effects: Exprs,
     pub returns: Option<Expr>,
     pub invariant_except_break: Exprs,
     pub invariant: Exprs,
@@ -40,6 +41,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut guard_require: Option<Exprs> = None;
     let mut ensure: Option<(Option<(VarIdent, Typ)>, Exprs)> = None;
     let mut guard_ensure: Option<(Option<(VarIdent, Typ)>, Exprs)> = None;
+    let mut guard_effects: Option<(Option<(VarIdent, Typ)>, Exprs)> = None;
     let mut returns: Option<Expr> = None;
     let mut recommend: Option<Exprs> = None;
     let mut invariant_except_break: Option<Exprs> = None;
@@ -114,6 +116,15 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                             ));
                         }
                         guard_ensure = Some((id_typ.clone(), es.clone()));
+                    }
+                    HeaderExprX::GuardEffects(id_typ, es) => {
+                        if guard_effects.is_some() {
+                            return Err(error(
+                                &stmt.span,
+                                "only one call to guard_effects allowed (use guard_effects([e1, ..., en]) for multiple expressions",
+                            ));
+                        }
+                        guard_effects = Some((id_typ.clone(), es.clone()));
                     }
                     HeaderExprX::Returns(e) => {
                         if returns.is_some() {
@@ -250,13 +261,23 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let require = require.unwrap_or(Arc::new(vec![]));
     let guard_require = guard_require.unwrap_or(Arc::new(vec![]));
     let recommend = recommend.unwrap_or(Arc::new(vec![]));
-    let (ensure_id_typ, ensure) = match ensure {
+    let (ensure_id_typ1, ensure) = match ensure {
         None => (None, Arc::new(vec![])),
         Some((id_typ, es)) => (id_typ, es),
     };
-    let (_, guard_ensure) = match guard_ensure {
+    let (ensure_id_typ2, guard_ensure) = match guard_ensure {
         None => (None, Arc::new(vec![])),
         Some((id_typ, es)) => (id_typ, es),
+    };
+    let (ensure_id_typ3, guard_effects) = match guard_effects {
+        None => (None, Arc::new(vec![])),
+        Some((id_typ, es)) => (id_typ, es),
+    };
+    let ensure_id_typ = match (ensure_id_typ1, ensure_id_typ2, ensure_id_typ3) {
+        (Some(id_typ), _, _) => Some(id_typ),
+        (_, Some(id_typ), None) => Some(id_typ),
+        (_, _, Some(id_typ)) => Some(id_typ),
+        (None, None, None) => None,
     };
     let invariant_except_break = invariant_except_break.unwrap_or(Arc::new(vec![]));
     let invariant = invariant.unwrap_or(Arc::new(vec![]));
@@ -271,6 +292,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         ensure_id_typ,
         ensure,
         guard_ensure,
+        guard_effects,
         returns,
         invariant_except_break,
         invariant,
@@ -437,6 +459,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         ensure,
         guard_require,
         guard_ensure,
+        guard_effects,
         returns,
         decrease,
         decrease_when,
@@ -505,6 +528,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
     methodx.ensure = ensure;
     methodx.guard_require = guard_require;
     methodx.guard_ensure = guard_ensure;
+    methodx.guard_effects = guard_effects;
     methodx.returns = returns;
     methodx.decrease = decrease;
     methodx.decrease_when = decrease_when;

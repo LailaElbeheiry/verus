@@ -547,6 +547,7 @@ pub enum HeaderExprX {
     Ensures(Option<(VarIdent, Typ)>, Exprs),
     /// Guards Postconditions on exec/proof functions, with an optional name and type for the return value
     GuardEnsures(Option<(VarIdent, Typ)>, Exprs),
+    GuardEffects(Option<(VarIdent, Typ)>, Exprs),
     /// Returns clause
     Returns(Expr),
     /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.
@@ -756,6 +757,7 @@ pub enum AutospecUsage {
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
+pub type ExprTuples = Arc<Vec<(Expr, Expr)>>;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[to_node_impl(name = ">")]
 pub enum ExprX {
@@ -1136,6 +1138,7 @@ pub struct FunctionX {
     pub ensure: Exprs,
     pub guard_require: Exprs,
     pub guard_ensure: Exprs,
+    pub guard_effects: Exprs,
     /// Expression in the 'returns' clause
     pub returns: Option<Expr>,
     /// Decreases clause to ensure recursive function termination

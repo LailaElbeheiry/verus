@@ -149,6 +149,14 @@ impl Debug for Lite<syn::AssertForall> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::Assignment> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Assignment");
+        formatter.field("lhs", Lite(&self.value.lhs));
+        formatter.field("rhs", Lite(&self.value.rhs));
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::AssocConst> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("AssocConst");
@@ -285,6 +293,20 @@ impl Debug for Lite<syn::AssumeSpecification> {
                 }
             }
             formatter.field("guard_ensures", Print::ref_cast(val));
+        }
+        if let Some(val) = &self.value.guard_effects {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::GuardEffects);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("guard_effects", Print::ref_cast(val));
         }
         if let Some(val) = &self.value.returns {
             #[derive(RefCast)]
@@ -3277,6 +3299,15 @@ impl Debug for Lite<syn::GlobalSizeOf> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::GuardEffects> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("GuardEffects");
+        if !self.value.exprs.is_empty() {
+            formatter.field("exprs", Lite(&self.value.exprs));
+        }
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::GuardEnsures> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("GuardEnsures");
@@ -5839,6 +5870,20 @@ impl Debug for Lite<syn::SignatureSpec> {
             }
             formatter.field("guard_ensures", Print::ref_cast(val));
         }
+        if let Some(val) = &self.value.guard_effects {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::GuardEffects);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("guard_effects", Print::ref_cast(val));
+        }
         if let Some(val) = &self.value.returns {
             #[derive(RefCast)]
             #[repr(transparent)]
@@ -7435,6 +7480,11 @@ impl Debug for Lite<syn::token::Global> {
 impl Debug for Lite<syn::token::Gt> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("Token![>]")
+    }
+}
+impl Debug for Lite<syn::token::GuardEffects> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("Token![guard_effects]")
     }
 }
 impl Debug for Lite<syn::token::GuardEnsures> {

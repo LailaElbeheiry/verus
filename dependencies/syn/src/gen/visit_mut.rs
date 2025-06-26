@@ -51,6 +51,9 @@ pub trait VisitMut {
     fn visit_assert_forall_mut(&mut self, i: &mut crate::AssertForall) {
         visit_assert_forall_mut(self, i);
     }
+    fn visit_assignment_mut(&mut self, i: &mut crate::Assignment) {
+        visit_assignment_mut(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn visit_assoc_const_mut(&mut self, i: &mut crate::AssocConst) {
@@ -507,6 +510,9 @@ pub trait VisitMut {
     }
     fn visit_global_size_of_mut(&mut self, i: &mut crate::GlobalSizeOf) {
         visit_global_size_of_mut(self, i);
+    }
+    fn visit_guard_effects_mut(&mut self, i: &mut crate::GuardEffects) {
+        visit_guard_effects_mut(self, i);
     }
     fn visit_guard_ensures_mut(&mut self, i: &mut crate::GuardEnsures) {
         visit_guard_ensures_mut(self, i);
@@ -1255,6 +1261,14 @@ where
     skip!(node.by_token);
     full!(v.visit_block_mut(& mut * node.body));
 }
+pub fn visit_assignment_mut<V>(v: &mut V, node: &mut crate::Assignment)
+where
+    V: VisitMut + ?Sized,
+{
+    v.visit_expr_mut(&mut node.lhs);
+    skip!(node.eq_token);
+    v.visit_expr_mut(&mut node.rhs);
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
 pub fn visit_assoc_const_mut<V>(v: &mut V, node: &mut crate::AssocConst)
@@ -1323,6 +1337,9 @@ where
     }
     if let Some(it) = &mut node.guard_ensures {
         v.visit_guard_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.guard_effects {
+        v.visit_guard_effects_mut(it);
     }
     if let Some(it) = &mut node.returns {
         v.visit_returns_mut(it);
@@ -2839,6 +2856,16 @@ where
     skip!(node.eq_token);
     v.visit_expr_lit_mut(&mut node.expr_lit);
 }
+pub fn visit_guard_effects_mut<V>(v: &mut V, node: &mut crate::GuardEffects)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.token);
+    for mut el in Punctuated::pairs_mut(&mut node.exprs) {
+        let it = el.value_mut();
+        v.visit_assignment_mut(it);
+    }
+}
 pub fn visit_guard_ensures_mut<V>(v: &mut V, node: &mut crate::GuardEnsures)
 where
     V: VisitMut + ?Sized,
@@ -4255,6 +4282,9 @@ where
     }
     if let Some(it) = &mut node.guard_ensures {
         v.visit_guard_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.guard_effects {
+        v.visit_guard_effects_mut(it);
     }
     if let Some(it) = &mut node.returns {
         v.visit_returns_mut(it);

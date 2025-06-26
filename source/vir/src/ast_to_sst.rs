@@ -11,7 +11,7 @@ use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
 use crate::messages::{
-    Span, ToAny, error, error_with_secondary_label, internal_error, note, note_bare, warning,
+    Span, ToAny, error, error_with_secondary_label, internal_error, note_bare, warning,
 };
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
@@ -899,7 +899,6 @@ fn stm_call(
     let mut stms: Vec<Stm> = Vec::new();
 
     let mut small_args: Vec<Exp> = Vec::new();
-    let mut is_assert_guards = false;
     for arg in args.iter() {
         if is_small_exp_or_loc(arg) {
             small_args.push(arg.clone());

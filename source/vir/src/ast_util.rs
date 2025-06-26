@@ -1156,6 +1156,7 @@ impl HeaderExprX {
             | HeaderExprX::Requires(_)
             | HeaderExprX::GuardRequires(_)
             | HeaderExprX::GuardEnsures(..)
+            | HeaderExprX::GuardEffects(..)
             | HeaderExprX::Returns(_)
             | HeaderExprX::Recommends(_)
             | HeaderExprX::DecreasesWhen(_)

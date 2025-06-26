@@ -164,6 +164,21 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct Assignment {
+        pub lhs: Expr,
+        pub eq_token: Token![=],
+        pub rhs: Expr,
+    }
+}
+
+ast_struct! {
+    pub struct GuardEffects {
+        pub token: Token![guard_effects],
+        pub exprs: Punctuated<Assignment, Token![,]>,
+    }
+}
+
+ast_struct! {
     pub struct Returns {
         pub token: Token![returns],
         pub exprs: Specification,
@@ -280,6 +295,7 @@ ast_struct! {
         pub recommends: Option<Recommends>,
         pub ensures: Option<Ensures>,
         pub guard_ensures: Option<GuardEnsures>,
+        pub guard_effects: Option<GuardEffects>,
         pub returns: Option<Returns>,
         pub decreases: Option<SignatureDecreases>,
         pub invariants: Option<SignatureInvariants>,
@@ -295,6 +311,7 @@ impl SignatureSpec {
         self.requires = None;
         self.recommends = None;
         self.guard_ensures = None;
+        self.guard_effects = None;
         self.returns = None;
         self.decreases = None;
         self.invariants = None;
@@ -398,6 +415,7 @@ ast_struct! {
         pub guard_requires: Option<GuardRequires>,
         pub ensures: Option<Ensures>,
         pub guard_ensures: Option<GuardEnsures>,
+        pub guard_effects: Option<GuardEffects>,
         pub returns: Option<Returns>,
         pub invariants: Option<SignatureInvariants>,
         pub unwind: Option<SignatureUnwind>,
@@ -712,6 +730,7 @@ pub mod parsing {
                 || input.peek(Token![guard_requires])
                 || input.peek(Token![ensures])
                 || input.peek(Token![guard_ensures])
+                || input.peek(Token![guard_effects])
                 || input.peek(Token![returns])
                 || input.peek(Token![decreases])
                 || input.peek(Token![via])
@@ -740,6 +759,12 @@ pub mod parsing {
                 if input.peek2(Token![guard_requires]) {
                     return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'guard_requires' (if you meant this block to be part of the specification, try parenthesizing it)"));
                 }
+                if input.peek2(Token![guard_ensures]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'guard_ensures' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
+                if input.peek2(Token![guard_effects]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'guard_effects' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
                 if input.peek2(Token![opens_invariants]) {
                     return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'opens_invariants' (if you meant this block to be part of the specification, try parenthesizing it)"));
                 }
@@ -754,6 +779,78 @@ pub mod parsing {
                 }
             }
             Ok(Specification { exprs })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Assignment {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if let Expr::Assign(ExprAssign {
+                left,
+                eq_token,
+                right,
+                ..
+            }) = Expr::parse_without_eager_brace(input)?
+            {
+                Ok(Assignment {
+                    lhs: *left,
+                    eq_token,
+                    rhs: *right,
+                })
+            } else {
+                return Err(
+                    input.error("guard_effects must be an assignment of the form `lhs = rhs`")
+                );
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for GuardEffects {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let token: Token![guard_effects] = input.parse()?;
+            let mut exprs = Punctuated::new();
+            while !(input.is_empty() || input.peek(token::Brace)) {
+                exprs.push(input.parse()?);
+                if !input.peek(Token![,]) {
+                    break;
+                }
+                let punct = input.parse()?;
+                exprs.push_punct(punct);
+            }
+            if input.peek(token::Brace) {
+                if input.peek2(token::Brace) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by another block (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
+                if input.peek2(token::Comma) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by a comma (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
+                if input.peek2(Token![ensures]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'ensures' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
+                if input.peek2(Token![guard_requires]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'guard_requires' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
+                if input.peek2(Token![guard_ensures]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'guard_ensures' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
+                if input.peek2(Token![guard_effects]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'guard_effects' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
+                if input.peek2(Token![opens_invariants]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'opens_invariants' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
+                if input.peek2(Token![invariant_except_break]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'invariant_except_break' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
+                if input.peek2(Token![invariant]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'invariant' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
+                if input.peek2(Token![decreases]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by a 'decreases' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
+            }
+            Ok(GuardEffects { token, exprs })
         }
     }
 
@@ -1039,6 +1136,17 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<GuardEffects> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![guard_effects]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Option<Recommends> {
         fn parse(input: ParseStream) -> Result<Self> {
             if input.peek(Token![recommends]) {
@@ -1158,6 +1266,7 @@ pub mod parsing {
             let recommends: Option<Recommends> = input.parse()?;
             let ensures: Option<Ensures> = input.parse()?;
             let guard_ensures: Option<GuardEnsures> = input.parse()?;
+            let guard_effects: Option<GuardEffects> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
             let decreases: Option<SignatureDecreases> = input.parse()?;
             let invariants: Option<SignatureInvariants> = input.parse()?;
@@ -1170,6 +1279,7 @@ pub mod parsing {
                 recommends,
                 ensures,
                 guard_ensures,
+                guard_effects,
                 returns,
                 decreases,
                 invariants,
@@ -1450,6 +1560,7 @@ pub mod parsing {
             let guard_requires: Option<GuardRequires> = input.parse()?;
             let ensures: Option<Ensures> = input.parse()?;
             let guard_ensures: Option<GuardEnsures> = input.parse()?;
+            let guard_effects: Option<GuardEffects> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
             let invariants: Option<SignatureInvariants> = input.parse()?;
             let unwind: Option<SignatureUnwind> = input.parse()?;
@@ -1471,6 +1582,7 @@ pub mod parsing {
                 guard_requires,
                 ensures,
                 guard_ensures,
+                guard_effects,
                 returns,
                 invariants,
                 unwind,
@@ -1755,6 +1867,23 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for GuardEffects {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.exprs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for Assignment {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.lhs.to_tokens(tokens);
+            self.eq_token.to_tokens(tokens);
+            self.rhs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for Returns {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
@@ -1866,6 +1995,8 @@ mod printing {
             self.guard_requires.to_tokens(tokens);
             self.recommends.to_tokens(tokens);
             self.ensures.to_tokens(tokens);
+            self.guard_ensures.to_tokens(tokens);
+            self.guard_effects.to_tokens(tokens);
             self.returns.to_tokens(tokens);
             self.decreases.to_tokens(tokens);
             self.invariants.to_tokens(tokens);
@@ -2211,6 +2342,8 @@ mod printing {
             self.requires.to_tokens(tokens);
             self.guard_requires.to_tokens(tokens);
             self.ensures.to_tokens(tokens);
+            self.guard_ensures.to_tokens(tokens);
+            self.guard_effects.to_tokens(tokens);
             self.returns.to_tokens(tokens);
             self.invariants.to_tokens(tokens);
             self.unwind.to_tokens(tokens);

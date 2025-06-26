@@ -67,6 +67,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                         | SpecItem::Recommends
                         | SpecItem::Ensures
                         | SpecItem::GuardEnsures
+                        | SpecItem::GuardEffects
                         | SpecItem::Returns
                         | SpecItem::OpensInvariantsNone
                         | SpecItem::OpensInvariantsAny
@@ -376,7 +377,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             | SpecItem::Recommends
             | SpecItem::OpensInvariants
             | SpecItem::Returns => {
-                // FIXME(automation) guard_requires are allowed to mention tracked variables
+                // FIXME(automation) should guard_requires still make this call?
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(
                     args_len == 1,
@@ -508,7 +509,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                 unsupported_err_unless!(args_len == 1, expr.span, "expected guard_ensures", &args);
                 let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
                 let header = extract_guard_ensures(&bctx, args[0])?;
-                // extract_guard_ensures does most of the necessary work, so we can return at this point
+                mk_expr_span(args[0].span, ExprX::Header(header))
+            }
+            SpecItem::GuardEffects => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                let header = extract_guard_effects(&bctx, args[0])?;
                 mk_expr_span(args[0].span, ExprX::Header(header))
             }
             SpecItem::Decreases => {
@@ -1688,6 +1694,79 @@ fn extract_guard_ensures<'tcx>(
         }
     }
 }
+
+fn extract_guard_effects<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &'tcx Expr<'tcx>,
+) -> Result<HeaderExpr, VirErr> {
+    let tcx = bctx.ctxt.tcx;
+    match &expr.kind {
+        ExprKind::Closure(closure) => {
+            let typs: Vec<Typ> = closure_param_typs(bctx, expr)?;
+            let body = tcx.hir().body(closure.body);
+            let mut xs: Vec<VarIdent> = Vec::new();
+            for param in body.params.iter() {
+                xs.push(pat_to_var(param.pat)?);
+            }
+            let expr = &body.value;
+            let tup = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
+            let mut args = Vec::new();
+            match &tup.x {
+                ExprX::Ctor(_, _, fields, _) => {
+                    for field in fields.iter() {
+                        args.push(field.a.clone());
+                    }
+                }
+                _ => unreachable!(
+                    "guard_effects should always be a big tuple of relations by construction!"
+                ),
+            }
+            if typs.len() == 1 && xs.len() == 1 {
+                let id_typ = Some((xs[0].clone(), typs[0].clone()));
+                Ok(Arc::new(HeaderExprX::GuardEffects(id_typ, Arc::new(args))))
+            } else if typs.len() == 0 && xs.len() == 0 {
+                Ok(Arc::new(HeaderExprX::GuardEffects(None, Arc::new(args))))
+            } else {
+                err_span(expr.span, "expected 1 parameter in closure")
+            }
+        }
+        _ => {
+            unreachable!("Extracting guard effects where argument is not a closure!")
+        }
+    }
+}
+
+// fn extract_guard_effects<'tcx>(
+//     bctx: &BodyCtxt<'tcx>,
+//     expr: &'tcx Expr<'tcx>,
+// ) -> Result<HeaderExpr, VirErr> {
+//     let expr = skip_closure_coercion(bctx, expr);
+//     let tcx = bctx.ctxt.tcx;
+//     match &expr.kind {
+//         ExprKind::Closure(closure) => {
+//             let typs: Vec<Typ> = closure_param_typs(bctx, expr)?;
+//             let body = tcx.hir().body(closure.body);
+//             let mut xs: Vec<VarIdent> = Vec::new();
+//             for param in body.params.iter() {
+//                 xs.push(pat_to_var(param.pat)?);
+//             }
+//             let expr = &body.value;
+//             let args = vec_map_result(&extract_array(expr), |e| expr_to_vir(bctx, e, ExprModifier::REGULAR))?;
+//             if typs.len() == 1 && xs.len() == 1 {
+//                 let id_typ = Some((xs[0].clone(), typs[0].clone()));
+//                 Ok(Arc::new(HeaderExprX::GuardEffects(id_typ, Arc::new(args))))
+//             } else if typs.len() == 0 && xs.len() == 0 {
+//                 Ok(Arc::new(HeaderExprX::GuardEffects(None, Arc::new(args))))
+//             } else {
+//                 err_span(expr.span, "expected 1 parameter in closure")
+//             }
+//         }
+//         _ => {
+//             let args = vec_map_result(&extract_array(expr), |e| )?;
+//             Ok(Arc::new(HeaderExprX::GuardEnsures(None, Arc::new(args))))
+//         }
+//     }
+// }
 
 fn extract_quant<'tcx>(
     bctx: &BodyCtxt<'tcx>,

@@ -77,6 +77,16 @@ impl Debug for crate::AssertForall {
         formatter.finish()
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::Assignment {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Assignment");
+        formatter.field("lhs", &self.lhs);
+        formatter.field("eq_token", &self.eq_token);
+        formatter.field("rhs", &self.rhs);
+        formatter.finish()
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::AssocConst {
@@ -130,6 +140,7 @@ impl Debug for crate::AssumeSpecification {
         formatter.field("guard_requires", &self.guard_requires);
         formatter.field("ensures", &self.ensures);
         formatter.field("guard_ensures", &self.guard_ensures);
+        formatter.field("guard_effects", &self.guard_effects);
         formatter.field("returns", &self.returns);
         formatter.field("invariants", &self.invariants);
         formatter.field("unwind", &self.unwind);
@@ -1979,6 +1990,15 @@ impl Debug for crate::GlobalSizeOf {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::GuardEffects {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("GuardEffects");
+        formatter.field("token", &self.token);
+        formatter.field("exprs", &self.exprs);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::GuardEnsures {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("GuardEnsures");
@@ -3479,6 +3499,7 @@ impl Debug for crate::SignatureSpec {
         formatter.field("recommends", &self.recommends);
         formatter.field("ensures", &self.ensures);
         formatter.field("guard_ensures", &self.guard_ensures);
+        formatter.field("guard_effects", &self.guard_effects);
         formatter.field("returns", &self.returns);
         formatter.field("decreases", &self.decreases);
         formatter.field("invariants", &self.invariants);

@@ -307,6 +307,8 @@ pub fn func_decl_to_sst(
     let (ens_pars, enss) = req_ens_to_sst(ctx, diagnostics, function, &function.x.ensure, false)?;
     let (_ens_pars, guard_enss) =
         req_ens_to_sst(ctx, diagnostics, function, &function.x.guard_ensure, false)?;
+    let (_, guard_effects) =
+        req_ens_to_sst(ctx, diagnostics, function, &function.x.guard_effects, false)?;
     let post_pars = params_to_pre_post_pars(&function.x.params, false);
 
     let mut inv_masks: Vec<Exps> = Vec::new();
@@ -396,6 +398,7 @@ pub fn func_decl_to_sst(
         enss: Arc::new(enss),
         guard_reqs: Arc::new(guard_reqs),
         guard_enss: Arc::new(guard_enss),
+        guard_effects: Arc::new(guard_effects),
         inv_masks: Arc::new(inv_masks),
         unwind_condition,
         fndef_axioms: Arc::new(fndef_axiom_exps),

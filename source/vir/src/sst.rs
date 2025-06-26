@@ -276,6 +276,7 @@ pub struct FuncDeclSst {
     pub enss: Exps,
     pub guard_reqs: Exps,
     pub guard_enss: Exps,
+    pub guard_effects: Exps,
     pub inv_masks: Arc<Vec<Exps>>,
     pub unwind_condition: Option<Exp>,
     pub fndef_axioms: Exps,

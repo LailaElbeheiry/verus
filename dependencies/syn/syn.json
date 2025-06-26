@@ -209,6 +209,23 @@
       }
     },
     {
+      "ident": "Assignment",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "lhs": {
+          "syn": "Expr"
+        },
+        "eq_token": {
+          "token": "Eq"
+        },
+        "rhs": {
+          "syn": "Expr"
+        }
+      }
+    },
+    {
       "ident": "AssocConst",
       "features": {
         "any": [
@@ -345,6 +362,11 @@
         "guard_ensures": {
           "option": {
             "syn": "GuardEnsures"
+          }
+        },
+        "guard_effects": {
+          "option": {
+            "syn": "GuardEffects"
           }
         },
         "returns": {
@@ -3418,6 +3440,25 @@
       }
     },
     {
+      "ident": "GuardEffects",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "GuardEffects"
+        },
+        "exprs": {
+          "punctuated": {
+            "element": {
+              "syn": "Assignment"
+            },
+            "punct": "Comma"
+          }
+        }
+      }
+    },
+    {
       "ident": "GuardEnsures",
       "features": {
         "any": []
@@ -6263,6 +6304,11 @@
             "syn": "GuardEnsures"
           }
         },
+        "guard_effects": {
+          "option": {
+            "syn": "GuardEffects"
+          }
+        },
         "returns": {
           "option": {
             "syn": "Returns"
@@ -7722,6 +7768,7 @@
     "Ghost": "ghost",
     "Global": "global",
     "Gt": ">",
+    "GuardEffects": "guard_effects",
     "GuardEnsures": "guard_ensures",
     "GuardRequires": "guard_requires",
     "Has": "has",

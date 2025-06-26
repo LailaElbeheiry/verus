@@ -54,6 +54,14 @@ impl PartialEq for crate::AssertForall {
             && self.body == other.body
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::Assignment {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::Assignment {
+    fn eq(&self, other: &Self) -> bool {
+        self.lhs == other.lhs && self.rhs == other.rhs
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Eq for crate::AssocConst {}
@@ -95,8 +103,8 @@ impl PartialEq for crate::AssumeSpecification {
             && self.output == other.output && self.requires == other.requires
             && self.guard_requires == other.guard_requires
             && self.ensures == other.ensures && self.guard_ensures == other.guard_ensures
-            && self.returns == other.returns && self.invariants == other.invariants
-            && self.unwind == other.unwind
+            && self.guard_effects == other.guard_effects && self.returns == other.returns
+            && self.invariants == other.invariants && self.unwind == other.unwind
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -1334,6 +1342,14 @@ impl PartialEq for crate::GlobalSizeOf {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::GuardEffects {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::GuardEffects {
+    fn eq(&self, other: &Self) -> bool {
+        self.exprs == other.exprs
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Eq for crate::GuardEnsures {}
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for crate::GuardEnsures {
@@ -2440,7 +2456,8 @@ impl PartialEq for crate::SignatureSpec {
         self.prover == other.prover && self.requires == other.requires
             && self.guard_requires == other.guard_requires
             && self.recommends == other.recommends && self.ensures == other.ensures
-            && self.guard_ensures == other.guard_ensures && self.returns == other.returns
+            && self.guard_ensures == other.guard_ensures
+            && self.guard_effects == other.guard_effects && self.returns == other.returns
             && self.decreases == other.decreases && self.invariants == other.invariants
             && self.unwind == other.unwind && self.with == other.with
     }

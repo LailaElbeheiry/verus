@@ -597,6 +597,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         let enss = self.visit_exps(&func_decl.enss)?;
         let guard_reqs = self.visit_exps(&func_decl.guard_reqs)?;
         let guard_enss = self.visit_exps(&func_decl.guard_enss)?;
+        let guard_effects = self.visit_exps(&func_decl.guard_effects)?;
         let fndef_axioms = self.visit_exps(&func_decl.fndef_axioms)?;
         let mut inv_masks = R::vec();
         for es in func_decl.inv_masks.iter() {
@@ -613,6 +614,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             enss: R::get_vec_a(enss),
             guard_reqs: R::get_vec_a(guard_reqs),
             guard_enss: R::get_vec_a(guard_enss),
+            guard_effects: R::get_vec_a(guard_effects),
             inv_masks: R::get_vec_a(inv_masks),
             unwind_condition: R::get_opt(unwind_condition),
             fndef_axioms: R::get_vec_a(fndef_axioms),

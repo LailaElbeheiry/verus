@@ -58,6 +58,7 @@ a.struct[title="struct syn::token::Ge"],
 a.struct[title="struct syn::token::Ghost"],
 a.struct[title="struct syn::token::Global"],
 a.struct[title="struct syn::token::Gt"],
+a.struct[title="struct syn::token::GuardEffects"],
 a.struct[title="struct syn::token::GuardEnsures"],
 a.struct[title="struct syn::token::GuardRequires"],
 a.struct[title="struct syn::token::Has"],
@@ -224,6 +225,7 @@ a.struct[title="struct syn::token::Ge"]::before,
 a.struct[title="struct syn::token::Ghost"]::before,
 a.struct[title="struct syn::token::Global"]::before,
 a.struct[title="struct syn::token::Gt"]::before,
+a.struct[title="struct syn::token::GuardEffects"]::before,
 a.struct[title="struct syn::token::GuardEnsures"]::before,
 a.struct[title="struct syn::token::GuardRequires"]::before,
 a.struct[title="struct syn::token::Has"]::before,
@@ -569,6 +571,10 @@ a.struct[title="struct syn::token::Global"]::before {
 
 a.struct[title="struct syn::token::Gt"]::before {
 	content: "Token![>]";
+}
+
+a.struct[title="struct syn::token::GuardEffects"]::before {
+	content: "Token![guard_effects]";
 }
 
 a.struct[title="struct syn::token::GuardEnsures"]::before {
@@ -1161,6 +1167,7 @@ a.struct[title="struct syn::token::Yield"]::after {
 }
 
 a.struct[title="struct syn::token::AssumeSpecification"]::after,
+a.struct[title="struct syn::token::GuardEffects"]::after,
 a.struct[title="struct syn::token::GuardEnsures"]::after,
 a.struct[title="struct syn::token::GuardRequires"]::after,
 a.struct[title="struct syn::token::InvariantEnsures"]::after,

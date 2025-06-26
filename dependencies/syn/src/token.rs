@@ -757,6 +757,7 @@ define_keywords! {
     "recommends"  pub struct Recommends
     "ensures"     pub struct Ensures
     "guard_ensures"    pub struct GuardEnsures
+    "guard_effects"    pub struct GuardEffects
     "returns"     pub struct Returns
     "decreases"   pub struct Decreases
     "with"        pub struct With
@@ -1048,6 +1049,7 @@ macro_rules! Token {
     [recommends]  => { $crate::token::Recommends };
     [ensures]     => { $crate::token::Ensures };
     [guard_ensures]    => { $crate::token::GuardEnsures };
+    [guard_effects]    => { $crate::token::GuardEffects };
     [returns]     => { $crate::token::Returns };
     [decreases]   => { $crate::token::Decreases };
     [with]   => { $crate::token::With };
