@@ -794,6 +794,7 @@ define_keywords! {
     "broadcast"   pub struct Broadcast
     "group"       pub struct BroadcastGroup
     "assume_specification" pub struct AssumeSpecification
+    "end_region"    pub struct EndRegion
 }
 
 define_punctuation! {
@@ -1050,6 +1051,7 @@ macro_rules! Token {
     [ensures]     => { $crate::token::Ensures };
     [guard_ensures]    => { $crate::token::GuardEnsures };
     [guard_effects]    => { $crate::token::GuardEffects };
+    [end_region]    => { $crate::token::EndRegion };
     [returns]     => { $crate::token::Returns };
     [decreases]   => { $crate::token::Decreases };
     [with]   => { $crate::token::With };

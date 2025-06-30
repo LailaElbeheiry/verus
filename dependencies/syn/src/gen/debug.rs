@@ -634,6 +634,16 @@ impl Debug for crate::DeriveInput {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::EndRegion {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("EndRegion");
+        formatter.field("token", &self.token);
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("expr", &self.expr);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::Ensures {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Ensures");
@@ -719,6 +729,11 @@ impl Debug for crate::Expr {
             crate::Expr::Yield(v0) => v0.debug(formatter, "Yield"),
             crate::Expr::Assume(v0) => {
                 let mut formatter = formatter.debug_tuple("Assume");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            crate::Expr::EndRegion(v0) => {
+                let mut formatter = formatter.debug_tuple("EndRegion");
                 formatter.field(v0);
                 formatter.finish()
             }

@@ -79,6 +79,7 @@ pub(crate) fn stm_assign(
         | StmX::AssertBitVector { .. }
         | StmX::AssertCompute(..)
         | StmX::Assume(_)
+        | StmX::EndRegion(_)
         | StmX::Fuel(..)
         | StmX::RevealString(_)
         | StmX::Return { .. }

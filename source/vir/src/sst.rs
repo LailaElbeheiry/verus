@@ -162,6 +162,8 @@ pub enum StmX {
     },
     AssertCompute(Option<AssertId>, Exp, crate::ast::ComputeMode),
     Assume(Exp),
+    // NOTE(automation) is it okay that EndRegion is a statement and not an expression?
+    EndRegion(Exp),
     Assign {
         lhs: Dest,
         rhs: Exp,

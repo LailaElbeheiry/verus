@@ -411,6 +411,10 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let exp = self.visit_exp(exp)?;
                 R::ret(|| stm_new(StmX::Assume(R::get(exp))))
             }
+            StmX::EndRegion(exp) => {
+                let exp = self.visit_exp(exp)?;
+                R::ret(|| stm_new(StmX::EndRegion(R::get(exp))))
+            }
             StmX::Assign { lhs, rhs } => {
                 let lhs = self.visit_dest(lhs)?;
                 let rhs = self.visit_exp(rhs)?;

@@ -803,6 +803,10 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             let e1 = visit_exp_native(ctx, state, e1);
             mk_stm(StmX::Assume(e1))
         }
+        StmX::EndRegion(e1) => {
+            let e1 = visit_exp_native(ctx, state, e1);
+            mk_stm(StmX::EndRegion(e1))
+        }
         StmX::Assign { lhs, rhs } => {
             let (e1, rhs) = if let Some(x) = take_temp(state, lhs) {
                 let rhs = visit_exp(ctx, state, rhs);

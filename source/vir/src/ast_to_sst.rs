@@ -1690,6 +1690,14 @@ pub(crate) fn expr_to_stm_opt(
             let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
             Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
         }
+        ExprX::EndRegion { expr: e } => {
+            // Use expr_to_pure_exp_skip_checks,
+            // because the goal of assume is to add an assumption, not to perform checks
+            let exp = expr_to_pure_exp_skip_checks(ctx, state, e)?;
+            let stm = Spanned::new(expr.span.clone(), StmX::EndRegion(exp));
+            Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
+            // Ok((vec![], ReturnValue::Some(mk_exp(ExpX::EndRegion(exp.clone())))))
+        }
         ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume, expr, fun } => {
             let (mut stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
 

@@ -831,6 +831,13 @@ impl Debug for Lite<syn::DeriveInput> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::EndRegion> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("EndRegion");
+        formatter.field("expr", Lite(&self.value.expr));
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::Ensures> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Ensures");
@@ -1684,6 +1691,13 @@ impl Debug for Lite<syn::Expr> {
             }
             syn::Expr::Assume(_val) => {
                 formatter.write_str("Expr::Assume")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+            syn::Expr::EndRegion(_val) => {
+                formatter.write_str("Expr::EndRegion")?;
                 formatter.write_str("(")?;
                 Debug::fmt(Lite(_val), formatter)?;
                 formatter.write_str(")")?;
@@ -7380,6 +7394,11 @@ impl Debug for Lite<syn::token::Dyn> {
 impl Debug for Lite<syn::token::Else> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("Token![else]")
+    }
+}
+impl Debug for Lite<syn::token::EndRegion> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("Token![end_region]")
     }
 }
 impl Debug for Lite<syn::token::Ensures> {

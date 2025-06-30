@@ -181,6 +181,9 @@ pub trait Fold {
     fn fold_derive_input(&mut self, i: crate::DeriveInput) -> crate::DeriveInput {
         fold_derive_input(self, i)
     }
+    fn fold_end_region(&mut self, i: crate::EndRegion) -> crate::EndRegion {
+        fold_end_region(self, i)
+    }
     fn fold_ensures(&mut self, i: crate::Ensures) -> crate::Ensures {
         fold_ensures(self, i)
     }
@@ -1768,6 +1771,16 @@ where
         data: f.fold_data(node.data),
     }
 }
+pub fn fold_end_region<F>(f: &mut F, node: crate::EndRegion) -> crate::EndRegion
+where
+    F: Fold + ?Sized,
+{
+    crate::EndRegion {
+        token: node.token,
+        paren_token: node.paren_token,
+        expr: Box::new(f.fold_expr(*node.expr)),
+    }
+}
 pub fn fold_ensures<F>(f: &mut F, node: crate::Ensures) -> crate::Ensures
 where
     F: Fold + ?Sized,
@@ -1894,6 +1907,9 @@ where
             crate::Expr::Yield(full!(f.fold_expr_yield(_binding_0)))
         }
         crate::Expr::Assume(_binding_0) => crate::Expr::Assume(f.fold_assume(_binding_0)),
+        crate::Expr::EndRegion(_binding_0) => {
+            crate::Expr::EndRegion(f.fold_end_region(_binding_0))
+        }
         crate::Expr::Assert(_binding_0) => crate::Expr::Assert(f.fold_assert(_binding_0)),
         crate::Expr::AssertForall(_binding_0) => {
             crate::Expr::AssertForall(f.fold_assert_forall(_binding_0))

@@ -69,6 +69,13 @@ pub fn guard_effects<A>(_a: A) {
     unimplemented!();
 }
 
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::end_region"]
+#[verifier::proof]
+pub fn end_region<A>(_a: A) {
+    unimplemented!();
+}
+
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::returns"]

@@ -1314,6 +1314,13 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, e, Mode::Spec)?;
             Ok(outer_mode)
         }
+        ExprX::EndRegion { expr: e } => {
+            if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
+                return Err(error(&expr.span, "cannot use end_region in exec mode"));
+            }
+            check_expr_has_mode(ctxt, record, typing, Mode::Spec, e, Mode::Spec)?;
+            Ok(outer_mode)
+        }
         ExprX::AssertBy { vars, require, ensure, proof } => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot use 'assert ... by' in exec mode")

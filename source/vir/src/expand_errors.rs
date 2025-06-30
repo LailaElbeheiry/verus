@@ -105,6 +105,7 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
         StmX::AssertBitVector { requires: _, ensures: _ }
         | StmX::AssertCompute(..)
         | StmX::Assume(..)
+        | StmX::EndRegion(..)
         | StmX::Assign { .. }
         | StmX::RevealString { .. }
         | StmX::Air { .. }

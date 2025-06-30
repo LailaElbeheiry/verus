@@ -541,6 +541,15 @@ impl Hash for crate::DeriveInput {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::EndRegion {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.expr.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::Ensures {
     fn hash<H>(&self, state: &mut H)
     where
@@ -746,52 +755,56 @@ impl Hash for crate::Expr {
                 state.write_u8(40u8);
                 v0.hash(state);
             }
-            crate::Expr::Assert(v0) => {
+            crate::Expr::EndRegion(v0) => {
                 state.write_u8(41u8);
                 v0.hash(state);
             }
-            crate::Expr::AssertForall(v0) => {
+            crate::Expr::Assert(v0) => {
                 state.write_u8(42u8);
                 v0.hash(state);
             }
-            crate::Expr::RevealHide(v0) => {
+            crate::Expr::AssertForall(v0) => {
                 state.write_u8(43u8);
                 v0.hash(state);
             }
-            crate::Expr::View(v0) => {
+            crate::Expr::RevealHide(v0) => {
                 state.write_u8(44u8);
                 v0.hash(state);
             }
-            crate::Expr::BigAnd(v0) => {
+            crate::Expr::View(v0) => {
                 state.write_u8(45u8);
                 v0.hash(state);
             }
-            crate::Expr::BigOr(v0) => {
+            crate::Expr::BigAnd(v0) => {
                 state.write_u8(46u8);
                 v0.hash(state);
             }
-            crate::Expr::Is(v0) => {
+            crate::Expr::BigOr(v0) => {
                 state.write_u8(47u8);
                 v0.hash(state);
             }
-            crate::Expr::IsNot(v0) => {
+            crate::Expr::Is(v0) => {
                 state.write_u8(48u8);
                 v0.hash(state);
             }
-            crate::Expr::Has(v0) => {
+            crate::Expr::IsNot(v0) => {
                 state.write_u8(49u8);
                 v0.hash(state);
             }
-            crate::Expr::HasNot(v0) => {
+            crate::Expr::Has(v0) => {
                 state.write_u8(50u8);
                 v0.hash(state);
             }
-            crate::Expr::Matches(v0) => {
+            crate::Expr::HasNot(v0) => {
                 state.write_u8(51u8);
                 v0.hash(state);
             }
-            crate::Expr::GetField(v0) => {
+            crate::Expr::Matches(v0) => {
                 state.write_u8(52u8);
+                v0.hash(state);
+            }
+            crate::Expr::GetField(v0) => {
+                state.write_u8(53u8);
                 v0.hash(state);
             }
             #[cfg(not(feature = "full"))]

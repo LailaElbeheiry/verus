@@ -24,8 +24,8 @@ use crate::token;
 use crate::ty::ReturnType;
 use crate::ty::Type;
 use crate::verus::{
-    Assert, AssertForall, Assume, BigAnd, BigOr, ClosureArg, Decreases, Ensures, ExprGetField,
-    ExprHas, ExprHasNot, ExprIs, ExprIsNot, ExprMatches, FnProofOptions, Invariant,
+    Assert, AssertForall, Assume, BigAnd, BigOr, ClosureArg, Decreases, EndRegion, Ensures,
+    ExprGetField, ExprHas, ExprHasNot, ExprIs, ExprIsNot, ExprMatches, FnProofOptions, Invariant,
     InvariantEnsures, InvariantExceptBreak, Requires, RevealHide, View,
 };
 use proc_macro2::{Span, TokenStream};
@@ -253,6 +253,7 @@ ast_enum_of_structs! {
 
         // verus
         Assume(Assume),
+        EndRegion(EndRegion),
         Assert(Assert),
         AssertForall(AssertForall),
         RevealHide(RevealHide),
@@ -1016,6 +1017,7 @@ impl Expr {
             Expr::Verbatim(_) => Vec::new(),
             Expr::BigAnd(_) => Vec::new(),
             Expr::BigOr(_) => Vec::new(),
+            Expr::EndRegion(_) => Vec::new(),
         }
     }
 }
@@ -1340,6 +1342,8 @@ pub(crate) mod parsing {
             Expr::Loop(input.parse()?)
         } else if input.peek(Token![assume]) {
             Expr::Assume(input.parse()?)
+        } else if input.peek(Token![end_region]) {
+            Expr::EndRegion(input.parse()?)
         } else if input.peek(Token![assert]) && input.peek2(Token![forall]) {
             Expr::AssertForall(input.parse()?)
         } else if input.peek(Token![assert]) && !input.peek2(Token![!]) {
@@ -2003,6 +2007,8 @@ pub(crate) mod parsing {
             input.parse().map(Expr::Loop)
         } else if input.peek(Token![assume]) {
             input.parse().map(Expr::Assume)
+        } else if input.peek(Token![end_region]) {
+            input.parse().map(Expr::EndRegion)
         } else if input.peek(Token![assert]) && input.peek2(Token![forall]) {
             input.parse().map(Expr::AssertForall)
         } else if input.peek(Token![assert]) && !input.peek2(Token![!]) {
@@ -3547,6 +3553,7 @@ pub(crate) mod printing {
 
             // verus
             Expr::Assume(e) => e.to_tokens(tokens),
+            Expr::EndRegion(e) => e.to_tokens(tokens),
             Expr::Assert(e) => e.to_tokens(tokens),
             Expr::AssertForall(e) => e.to_tokens(tokens),
             Expr::RevealHide(e) => e.to_tokens(tokens),

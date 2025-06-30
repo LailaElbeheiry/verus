@@ -38,6 +38,7 @@ a.struct[title="struct syn::token::DotDotDot"],
 a.struct[title="struct syn::token::DotDotEq"],
 a.struct[title="struct syn::token::Dyn"],
 a.struct[title="struct syn::token::Else"],
+a.struct[title="struct syn::token::EndRegion"],
 a.struct[title="struct syn::token::Ensures"],
 a.struct[title="struct syn::token::Enum"],
 a.struct[title="struct syn::token::Eq"],
@@ -205,6 +206,7 @@ a.struct[title="struct syn::token::DotDotDot"]::before,
 a.struct[title="struct syn::token::DotDotEq"]::before,
 a.struct[title="struct syn::token::Dyn"]::before,
 a.struct[title="struct syn::token::Else"]::before,
+a.struct[title="struct syn::token::EndRegion"]::before,
 a.struct[title="struct syn::token::Ensures"]::before,
 a.struct[title="struct syn::token::Enum"]::before,
 a.struct[title="struct syn::token::Eq"]::before,
@@ -491,6 +493,10 @@ a.struct[title="struct syn::token::Dyn"]::before {
 
 a.struct[title="struct syn::token::Else"]::before {
 	content: "Token![else]";
+}
+
+a.struct[title="struct syn::token::EndRegion"]::before {
+	content: "Token![end_region]";
 }
 
 a.struct[title="struct syn::token::Ensures"]::before {
@@ -1167,6 +1173,7 @@ a.struct[title="struct syn::token::Yield"]::after {
 }
 
 a.struct[title="struct syn::token::AssumeSpecification"]::after,
+a.struct[title="struct syn::token::EndRegion"]::after,
 a.struct[title="struct syn::token::GuardEffects"]::after,
 a.struct[title="struct syn::token::GuardEnsures"]::after,
 a.struct[title="struct syn::token::GuardRequires"]::after,

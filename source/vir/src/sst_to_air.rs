@@ -2040,6 +2040,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr, expr_ctxt)?))]
         }
+        StmX::EndRegion(_expr) => {
+            vec![]
+        }
         StmX::Assign { lhs: Dest { dest, is_init: true }, rhs } => {
             let x = loc_is_var(dest).expect("is_init assign dest must be a variable");
             stm_to_stmts(ctx, state, &assume_var(&stm.span, x, rhs))?

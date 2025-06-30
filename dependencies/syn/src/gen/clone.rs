@@ -399,6 +399,16 @@ impl Clone for crate::DeriveInput {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::EndRegion {
+    fn clone(&self) -> Self {
+        crate::EndRegion {
+            token: self.token.clone(),
+            paren_token: self.paren_token.clone(),
+            expr: self.expr.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
 impl Clone for crate::Ensures {
     fn clone(&self) -> Self {
         crate::Ensures {
@@ -478,6 +488,7 @@ impl Clone for crate::Expr {
             #[cfg(feature = "full")]
             crate::Expr::Yield(v0) => crate::Expr::Yield(v0.clone()),
             crate::Expr::Assume(v0) => crate::Expr::Assume(v0.clone()),
+            crate::Expr::EndRegion(v0) => crate::Expr::EndRegion(v0.clone()),
             crate::Expr::Assert(v0) => crate::Expr::Assert(v0.clone()),
             crate::Expr::AssertForall(v0) => crate::Expr::AssertForall(v0.clone()),
             crate::Expr::RevealHide(v0) => crate::Expr::RevealHide(v0.clone()),

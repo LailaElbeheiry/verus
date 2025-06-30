@@ -474,6 +474,16 @@ fn check_one_expr(
                 return Err(error(&expr.span, "assume/admit not allowed with --no-cheating"));
             }
         }
+        ExprX::EndRegion { expr } => {
+            match &*expr.typ {
+                TypX::Decorate(crate::ast::TypDecoration::Ref, _, _) => {
+                    return Ok(());
+                }
+                _ => {
+                    return Err(error(&expr.span, "end_region must be applied to a reference type"));
+                }
+            };
+        }
         ExprX::AssertBy { ensure, vars, .. } => match &ensure.x {
             ExprX::Binary(crate::ast::BinaryOp::Implies, _, _) => {
                 if !vars.is_empty() {

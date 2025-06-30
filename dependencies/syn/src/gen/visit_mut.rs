@@ -179,6 +179,9 @@ pub trait VisitMut {
     fn visit_derive_input_mut(&mut self, i: &mut crate::DeriveInput) {
         visit_derive_input_mut(self, i);
     }
+    fn visit_end_region_mut(&mut self, i: &mut crate::EndRegion) {
+        visit_end_region_mut(self, i);
+    }
     fn visit_ensures_mut(&mut self, i: &mut crate::Ensures) {
         visit_ensures_mut(self, i);
     }
@@ -1740,6 +1743,14 @@ where
     v.visit_generics_mut(&mut node.generics);
     v.visit_data_mut(&mut node.data);
 }
+pub fn visit_end_region_mut<V>(v: &mut V, node: &mut crate::EndRegion)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.token);
+    skip!(node.paren_token);
+    v.visit_expr_mut(&mut *node.expr);
+}
 pub fn visit_ensures_mut<V>(v: &mut V, node: &mut crate::Ensures)
 where
     V: VisitMut + ?Sized,
@@ -1877,6 +1888,9 @@ where
         }
         crate::Expr::Assume(_binding_0) => {
             v.visit_assume_mut(_binding_0);
+        }
+        crate::Expr::EndRegion(_binding_0) => {
+            v.visit_end_region_mut(_binding_0);
         }
         crate::Expr::Assert(_binding_0) => {
             v.visit_assert_mut(_binding_0);

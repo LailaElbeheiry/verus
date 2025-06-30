@@ -1110,6 +1110,25 @@
       }
     },
     {
+      "ident": "EndRegion",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "EndRegion"
+        },
+        "paren_token": {
+          "group": "Paren"
+        },
+        "expr": {
+          "box": {
+            "syn": "Expr"
+          }
+        }
+      }
+    },
+    {
       "ident": "Ensures",
       "features": {
         "any": []
@@ -1340,6 +1359,11 @@
         "Assume": [
           {
             "syn": "Assume"
+          }
+        ],
+        "EndRegion": [
+          {
+            "syn": "EndRegion"
           }
         ],
         "Assert": [
@@ -7748,6 +7772,7 @@
     "DotDotEq": "..=",
     "Dyn": "dyn",
     "Else": "else",
+    "EndRegion": "end_region",
     "Ensures": "ensures",
     "Enum": "enum",
     "Eq": "=",

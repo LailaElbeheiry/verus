@@ -432,6 +432,9 @@ where
                 ExprX::Fuel(_, _, _) => (),
                 ExprX::RevealString(_) => (),
                 ExprX::Header(_) => (),
+                ExprX::EndRegion { expr: e } => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+                }
                 ExprX::AssertAssume { is_assume: _, expr: e1 } => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                 }
@@ -989,6 +992,10 @@ where
         ExprX::AssertAssume { is_assume, expr: e1 } => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             ExprX::AssertAssume { is_assume: *is_assume, expr: expr1 }
+        }
+        ExprX::EndRegion { expr: e } => {
+            let expr = map_expr_visitor_env(e, map, env, fe, fs, ft)?;
+            ExprX::EndRegion { expr }
         }
         ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume, expr: e1, fun } => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;

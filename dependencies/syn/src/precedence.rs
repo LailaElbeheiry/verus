@@ -205,6 +205,7 @@ impl Precedence {
 
             // verus
             Expr::Assume(_)
+            | Expr::EndRegion(_)
             | Expr::Assert(_)
             | Expr::AssertForall(_)
             | Expr::RevealHide(_)

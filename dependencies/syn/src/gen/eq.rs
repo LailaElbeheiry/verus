@@ -404,6 +404,14 @@ impl PartialEq for crate::DeriveInput {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::EndRegion {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::EndRegion {
+    fn eq(&self, other: &Self) -> bool {
+        self.expr == other.expr
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Eq for crate::Ensures {}
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for crate::Ensures {
@@ -500,6 +508,9 @@ impl PartialEq for crate::Expr {
             #[cfg(feature = "full")]
             (crate::Expr::Yield(self0), crate::Expr::Yield(other0)) => self0 == other0,
             (crate::Expr::Assume(self0), crate::Expr::Assume(other0)) => self0 == other0,
+            (crate::Expr::EndRegion(self0), crate::Expr::EndRegion(other0)) => {
+                self0 == other0
+            }
             (crate::Expr::Assert(self0), crate::Expr::Assert(other0)) => self0 == other0,
             (crate::Expr::AssertForall(self0), crate::Expr::AssertForall(other0)) => {
                 self0 == other0

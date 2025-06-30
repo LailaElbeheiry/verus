@@ -179,6 +179,14 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct EndRegion {
+        pub token: Token![end_region],
+        pub paren_token: token::Paren,
+        pub expr: Box<Expr>,
+    }
+}
+
+ast_struct! {
     pub struct Returns {
         pub token: Token![returns],
         pub exprs: Specification,
@@ -1326,6 +1334,24 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for EndRegion {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let token: Token![end_region] = input.parse()?;
+            let content;
+            let paren_token = parenthesized!(content in input);
+            let expr = content.parse()?;
+            if !content.is_empty() {
+                return Err(content.error("expected `)`"));
+            }
+            Ok(EndRegion {
+                token,
+                paren_token,
+                expr,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Assert {
         fn parse(input: ParseStream) -> Result<Self> {
             let attrs = Vec::new();
@@ -2020,6 +2046,16 @@ mod printing {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             crate::expr::printing::outer_attrs_to_tokens(&self.attrs, tokens);
             self.assume_token.to_tokens(tokens);
+            self.paren_token.surround(tokens, |tokens| {
+                self.expr.to_tokens(tokens);
+            });
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for EndRegion {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
             self.paren_token.surround(tokens, |tokens| {
                 self.expr.to_tokens(tokens);
             });

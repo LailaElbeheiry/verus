@@ -2719,6 +2719,26 @@ impl Visitor {
         true
     }
 
+    fn handle_end_region(&mut self, expr: &mut Expr) -> bool {
+        let Expr::EndRegion(_) = expr else {
+            return false;
+        };
+
+        self.inside_ghost += 1;
+        self.visit_expr_with_arith(expr, InsideArith::None);
+        self.inside_ghost -= 1;
+
+        let Expr::EndRegion(e) = take_expr(expr) else { unreachable!() };
+
+        let span = e.token.span;
+        let arg = e.expr;
+        *expr = Expr::Verbatim(quote_spanned_builtin!(builtin, span => #builtin::end_region(#arg)));
+
+        self.auto_proof_block(expr, span);
+
+        true
+    }
+
     /// Handle `assert` statements. Automatically wrap them in a proof block.
     fn handle_assert(&mut self, expr: &mut Expr) -> bool {
         let Expr::Assert(_) = expr else {
@@ -3599,6 +3619,7 @@ impl VisitMut for Visitor {
         if self.chain_operators(expr)
             || self.closure_quant_operators(expr)
             || self.handle_binary_ops(expr)
+            || self.handle_end_region(expr)
             || self.handle_assume(expr)
             || self.handle_assert(expr)
             || self.handle_assert_forall(expr)

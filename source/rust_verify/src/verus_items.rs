@@ -90,6 +90,7 @@ pub(crate) fn def_id_to_stable_rust_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId)
 pub(crate) enum SpecItem {
     Admit,
     Assume,
+    EndRegion,
     NoMethodBody,
     Requires,
     GuardRequires,
@@ -383,6 +384,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
     vec![
         ("verus::builtin::admit",                   VerusItem::Spec(SpecItem::Admit)),
         ("verus::builtin::assume_",                 VerusItem::Spec(SpecItem::Assume)),
+        ("verus::builtin::end_region",                 VerusItem::Spec(SpecItem::EndRegion)),
         ("verus::builtin::no_method_body",          VerusItem::Spec(SpecItem::NoMethodBody)),
         ("verus::builtin::requires",                VerusItem::Spec(SpecItem::Requires)),
         ("verus::builtin::guard_requires",          VerusItem::Spec(SpecItem::GuardRequires)),
