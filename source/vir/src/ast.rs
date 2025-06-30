@@ -754,6 +754,18 @@ pub enum AutospecUsage {
     Final,
 }
 
+#[derive(Debug, Clone, Copy, ToDebugSNode)]
+pub enum BorrowKind {
+    Ref,
+    Mut,
+}
+
+#[derive(Debug, Clone, ToDebugSNode)]
+pub struct ExpTags {
+    pub borrow: Option<BorrowKind>,
+    pub deref: bool,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;

@@ -63,10 +63,7 @@ pub enum CallFun {
     InternalFun(InternalFun),
 }
 
-#[derive(Debug, Clone, ToDebugSNode)]
-pub struct ExpTags {
-    pub borrow: bool,
-}
+pub use crate::ast::ExpTags;
 
 pub type Exp = Arc<SpannedTyped<TaggedExpX>>;
 
@@ -93,7 +90,7 @@ impl SpannedTyped<TaggedExpX> {
         Arc::new(SpannedTyped {
             span: span.clone(),
             typ: typ.clone(),
-            x: TaggedExpX { exp: x, tags: ExpTags { borrow: false } },
+            x: TaggedExpX { exp: x, tags: ExpTags { borrow: None } },
         })
     }
 }
