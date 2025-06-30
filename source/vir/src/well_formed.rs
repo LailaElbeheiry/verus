@@ -1020,25 +1020,53 @@ fn check_function(
     for eff in function.x.guard_effects.iter() {
         fn is_ok(e: &Expr) -> bool {
             match &e.x {
-                ExprX::VarLoc(_) => true,
                 ExprX::Unary(UnaryOp::CoerceMode { .. }, e1) => is_ok(e1),
                 ExprX::UnaryOpr(UnaryOpr::Field { .. }, base) => is_ok(base),
                 ExprX::Block(stmts, Some(e1)) if stmts.len() == 0 => is_ok(e1),
                 ExprX::Ghost { alloc_wrapper: false, tracked: true, expr: e1 } => is_ok(e1),
+                ExprX::Loc(l) => is_ok(l),
+                ExprX::Var(_) | ExprX::VarLoc(_) | ExprX::VarAt(..) => true,
+                _ => false,
+            }
+        }
+        fn has_typ_param(t: &TypX) -> bool {
+            match t {
+                TypX::Primitive(_, typs) => typs.iter().any(|t| has_typ_param(t)),
+                TypX::Boxed(typ) => has_typ_param(typ),
+                TypX::Decorate(_, _, typ) => has_typ_param(typ),
+                TypX::TypParam(..) => true,
+                // FIXME(automation) correctly handle these types
+                TypX::Projection { .. } | TypX::Air(..) => false,
+                TypX::Datatype(_dt, typs, _) => typs.iter().any(|t| has_typ_param(t)),
                 _ => false,
             }
         }
         match &eff.x {
             ExprX::Ctor(Dt::Tuple(2), _variant, fields, _update) => {
                 // This is a guard_effects clause for a tuple, which is allowed
+                // check that both fields have the same type
+                if !types_equal(&fields[0].a.typ, &fields[1].a.typ) {
+                    let mut err = error(
+                        &fields[0].a.span,
+                        "lhs and rhs of guard_effects clause must have the same type",
+                    );
+                    // FIXME(automation) this is a hack to get the span of the entire clause (for some reason eff.span is not the right span)
+                    Arc::make_mut(&mut err).spans.push(fields[1].a.span.clone());
+                    return Err(err);
+                }
+
+                // check that there is a type parameter involved
+                if !has_typ_param(&fields[0].a.typ) {
+                    return Err(error(
+                        &eff.span,
+                        "guard_effects clause must only mention arguments that have a type parameter in their types",
+                    ));
+                }
+
                 for field in fields.iter() {
                     // check that p is simple
-                    let is_ok = match &field.a.x {
-                        ExprX::Loc(l) => is_ok(l),
-                        ExprX::Var(_) | ExprX::VarLoc(_) | ExprX::VarAt(..) => true,
-                        _ => false,
-                    };
-                    if !is_ok {
+                    if !is_ok(&field.a) {
+                        dbg!(&field.a.x);
                         return Err(error(
                             &field.a.span,
                             "complex expressions in guard_effects clauses are not allowed",
