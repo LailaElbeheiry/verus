@@ -227,7 +227,7 @@ pub type Typ = Arc<TypX>;
 pub type Typs = Arc<Vec<Typ>>;
 // Because of ImplPaths in TypX::Datatype, TypX should not implement PartialEq, Eq
 // See ast_util::types_equal instead
-#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
+#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode, Clone)]
 pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
@@ -1250,6 +1250,7 @@ pub type Variants = Arc<Vec<Variant>>;
 pub struct Variant {
     pub name: Ident,
     pub fields: Fields,
+    pub imaginary_fields: Fields,
     pub ctor_style: CtorPrintStyle,
 }
 
@@ -1397,4 +1398,5 @@ pub struct KrateX {
     pub path_as_rust_names: Vec<(Path, String)>,
     /// Arch info
     pub arch: Arch,
+    pub imaginary_field_paths: Vec<Path>,
 }

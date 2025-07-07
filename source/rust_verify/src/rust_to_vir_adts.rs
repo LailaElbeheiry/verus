@@ -111,6 +111,7 @@ where
     let vir_fields_binder = Variant {
         name: name.clone(),
         fields: Arc::new(vir_fields),
+        imaginary_fields: Arc::new(vec![]),
         ctor_style: get_ctor_print_style(variant_def),
     };
     Ok((vir_fields_binder, inner_vis))
@@ -175,6 +176,7 @@ pub(crate) fn check_item_struct<'tcx>(
         let variant = Variant {
             name: variant_name,
             fields: Arc::new(vec![]),
+            imaginary_fields: Arc::new(vec![]),
             ctor_style: CtorPrintStyle::Braces,
         };
         (variant, DatatypeTransparency::Never)
@@ -352,6 +354,7 @@ pub(crate) fn check_item_union<'tcx>(
         let variant = Variant {
             name: name.clone(),
             fields: Arc::new(vec![]),
+            imaginary_fields: Arc::new(vec![]),
             ctor_style: CtorPrintStyle::Braces,
         };
         (vec![variant], DatatypeTransparency::Never)
@@ -374,6 +377,7 @@ pub(crate) fn check_item_union<'tcx>(
             let variant = Variant {
                 name: variant_name,
                 fields: Arc::new(vec![ident_binder(&field_name, &field)]),
+                imaginary_fields: Arc::new(vec![]),
                 ctor_style: get_ctor_print_style(adt_def.non_enum_variant()),
             };
             variants.push(variant);
@@ -662,6 +666,7 @@ pub(crate) fn check_item_external<'tcx>(
         let variant = Variant {
             name: variant_name,
             fields: Arc::new(vec![]),
+            imaginary_fields: Arc::new(vec![]),
             ctor_style: CtorPrintStyle::Braces,
         };
         let variants = Arc::new(vec![variant]);
@@ -770,6 +775,51 @@ pub(crate) fn check_item_external<'tcx>(
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
     }
 
+    Ok(())
+}
+
+fn fix_typ_param(typ: &mut TypX, map_param: &HashMap<Ident, Ident>) {
+    match typ {
+        TypX::Datatype(_, args, _) => {
+            let i = Arc::get_mut(args).unwrap().iter_mut();
+            i.for_each(|inner_typ| {
+                Arc::get_mut(inner_typ).map(|t| fix_typ_param(t, map_param));
+            });
+        }
+        TypX::TypParam(id) => {
+            *id = (map_param.get(id).unwrap_or(id)).clone();
+        }
+        _ => {}
+    }
+}
+
+pub(crate) fn add_imaginary_fields(
+    datatypes: &mut Vec<Datatype>,
+    mut external_info: ExternalInfo,
+) -> Result<(), VirErr> {
+    // Add imaginary fields that were declared on structs.
+    // Imaginary fields can only be used in `guard_effects`
+    for dt in datatypes.iter_mut() {
+        let dt = Arc::make_mut(dt);
+        if let Some(imaginary_fields) = external_info.imaginary_fields.get_mut(&dt.x.name) {
+            for (typ_params, field) in imaginary_fields.iter_mut() {
+                // We first need to fix the names of generic type parameters in the imaginary field to match the struct's type parameters.
+                let mut typ_params_map = HashMap::<Ident, Ident>::new();
+                for (i, t) in typ_params.iter().enumerate() {
+                    // the number of parameters in the imaginary_field's typ_params vector is guaranteed to match the number of parameters in the datatype by the way this is constructed in `check_item_fn`
+                    typ_params_map.insert(t.clone(), dt.x.typ_params[i].0.clone());
+                }
+                let imaginary_field = Arc::get_mut(field).unwrap();
+                let imaginary_field_typ = Arc::make_mut(&mut imaginary_field.a.0);
+                fix_typ_param(imaginary_field_typ, &typ_params_map);
+                // This `unwrap` is also safe by construction of imaginary fields in `check_item_fn`.
+                let variants = Arc::get_mut(&mut dt.x.variants).unwrap();
+                // This `unwrap` is also safe by construction because `check_item_fn` will only add imaginary fields when called on struct method impls
+                let variant: &mut Variant = variants.get_mut(0).unwrap();
+                Arc::get_mut(&mut variant.imaginary_fields).unwrap().push(field.clone());
+            }
+        }
+    }
     Ok(())
 }
 

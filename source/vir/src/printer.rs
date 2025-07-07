@@ -398,6 +398,7 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
         external_types,
         path_as_rust_names: _,
         arch,
+        imaginary_field_paths: _,
     } = &**vir_crate;
     for datatype in datatypes.iter() {
         if opts.no_span {

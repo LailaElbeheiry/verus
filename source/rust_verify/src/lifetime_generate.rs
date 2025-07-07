@@ -2557,6 +2557,9 @@ fn erase_impl<'tcx>(
                 if vattrs.reveal_group {
                     continue;
                 }
+                if vattrs.imaginary_field {
+                    continue;
+                }
                 match &kind {
                     ImplItemKind::Fn(sig, body_id) => {
                         erase_fn(
