@@ -195,7 +195,6 @@ fn check_item<'tcx>(
                 None,
                 external_info,
                 None,
-                None,
             )?;
         }
         ItemKind::Use { .. } => {}
@@ -371,7 +370,6 @@ pub fn crate_to_vir<'a, 'tcx>(
         external_types: Vec::new(),
         path_as_rust_names: Vec::new(),
         arch: vir::ast::Arch { word_bits: vir::ast::ArchWordBits::Either32Or64 },
-        imaginary_field_paths: Vec::new(),
     };
 
     let mut external_info = ExternalInfo::new();
@@ -526,7 +524,6 @@ pub fn crate_to_vir<'a, 'tcx>(
         &mut vir,
         &mut external_info,
     )?;
-    crate::rust_to_vir_adts::add_imaginary_fields(&mut vir.datatypes, external_info)?;
 
     crate::rust_to_vir_adts::setup_type_invariants(&mut vir)?;
 

@@ -1176,7 +1176,6 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         external_types,
         path_as_rust_names,
         arch,
-        imaginary_field_paths,
     } = &**krate;
     let mut state = State::new();
 
@@ -1222,7 +1221,6 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         let variant = Variant {
             name: prefix_tuple_variant(arity),
             fields: Arc::new(fields),
-            imaginary_fields: Arc::new(vec![]),
             ctor_style: CtorPrintStyle::Tuple,
         };
         let variants = Arc::new(vec![variant]);
@@ -1316,7 +1314,6 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         external_types,
         path_as_rust_names: path_as_rust_names.clone(),
         arch: arch.clone(),
-        imaginary_field_paths: imaginary_field_paths.clone(),
     });
     *ctx = crate::context::GlobalCtx::new(
         &krate,
@@ -1349,12 +1346,10 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
             external_types,
             path_as_rust_names,
             arch,
-            imaginary_field_paths,
         } = &*k;
         kratex.functions.extend(functions.clone());
         kratex.reveal_groups.extend(reveal_groups.clone());
         kratex.datatypes.extend(datatypes.clone());
-        kratex.imaginary_field_paths.extend(imaginary_field_paths.clone());
         kratex.traits.extend(traits.clone());
         kratex.trait_impls.extend(trait_impls.clone());
         kratex.assoc_type_impls.extend(assoc_type_impls.clone());

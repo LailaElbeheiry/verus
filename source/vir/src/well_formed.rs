@@ -111,10 +111,6 @@ fn check_path_and_get_function<'a>(
     disallow_private_access: Option<(&Visibility, &str)>,
     span: &crate::messages::Span,
 ) -> Result<&'a Function, VirErr> {
-    fn is_imaginary_field_fn<'a>(ctxt: &'a Ctxt, path: &Path) -> bool {
-        ctxt.krate.imaginary_field_paths.contains(path)
-    }
-
     fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Path> {
         // Linear scan, but this only happens if this uncommon error message triggers
         for function in &ctxt.unpruned_krate.functions {
@@ -153,12 +149,6 @@ fn check_path_and_get_function<'a>(
                         "cannot use function `{:}` which is ignored because it is either declared outside the verus! macro or it is marked as `external`",
                         path_as_friendly_rust_name(&x.path),
                     ),
-                ));
-            } else if is_imaginary_field_fn(ctxt, &x.path) {
-                let path = path_as_friendly_rust_name(&x.path);
-                return Err(error(
-                    span,
-                    &format!("`{path:}` is an imaginary field and not a function",),
                 ));
             } else {
                 let path = path_as_friendly_rust_name(&x.path);

@@ -336,8 +336,6 @@ pub(crate) enum Attr {
     ExecAllowNoDecreasesClause,
     // Assume that the function terminates
     AssumeTermination,
-    // (automation) imaginary struct field to help with `guard_effects`
-    ImaginaryFields,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -394,9 +392,6 @@ pub(crate) fn parse_attrs(
                         );
                     }
                     v.push(Attr::Trigger(Some(groups)));
-                }
-                AttrTree::Fun(_, name, None) if name == "imaginary_field" => {
-                    v.push(Attr::ImaginaryFields);
                 }
                 AttrTree::Fun(_, name, None) if name == "auto_trigger" => v.push(Attr::AutoTrigger),
                 AttrTree::Fun(_, name, None) if name == "all_triggers" => v.push(Attr::AllTriggers),
@@ -984,7 +979,6 @@ pub(crate) struct VerifierAttrs {
     pub(crate) open_visibility_qualifier: bool,
     pub(crate) assume_termination: bool,
     pub(crate) exec_allows_no_decreases_clause: bool,
-    pub(crate) imaginary_field: bool,
 }
 
 // Check for the `get_field_many_variants` attribute
@@ -1143,7 +1137,6 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         open_visibility_qualifier: false,
         assume_termination: false,
         exec_allows_no_decreases_clause: false,
-        imaginary_field: false,
     };
     let mut unsupported_rustc_attr: Option<(String, Span)> = None;
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -1216,7 +1209,6 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::OpenVisibilityQualifier => vs.open_visibility_qualifier = true,
             Attr::AssumeTermination => vs.assume_termination = true,
             Attr::ExecAllowNoDecreasesClause => vs.exec_allows_no_decreases_clause = true,
-            Attr::ImaginaryFields => vs.imaginary_field = true,
             _ => {}
         }
     }

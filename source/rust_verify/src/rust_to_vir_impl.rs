@@ -17,8 +17,8 @@ use rustc_span::def_id::DefId;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
-    AssocTypeImpl, AssocTypeImplX, Dt, Field, Fun, FunX, Function, FunctionKind, Ident, Idents,
-    ImplPath, Krate, KrateX, Path, Trait, TraitImpl, Typ, Typs, VirErr,
+    AssocTypeImpl, AssocTypeImplX, Dt, Fun, FunX, Function, FunctionKind, Ident, ImplPath, Krate,
+    KrateX, Path, Trait, TraitImpl, Typ, Typs, VirErr,
 };
 
 // Used to collect all needed external trait implementations
@@ -36,8 +36,6 @@ pub(crate) struct ExternalInfo {
     pub(crate) internal_trait_impls: HashSet<DefId>,
     // all #[verifier::external_fn_specification] functions that implement a trait
     pub(crate) external_fn_specification_trait_method_impls: Vec<(DefId, rustc_span::Span)>,
-    // TODO(automation) check that this is fine to have here or move it somewhere else
-    pub(crate) imaginary_fields: HashMap<Dt, Vec<(Idents, Field)>>,
 }
 
 impl ExternalInfo {
@@ -49,7 +47,6 @@ impl ExternalInfo {
             type_id_map: HashMap::new(),
             internal_trait_impls: HashSet::new(),
             external_fn_specification_trait_method_impls: Vec::new(),
-            imaginary_fields: HashMap::new(),
         }
     }
 
@@ -425,7 +422,6 @@ pub(crate) fn translate_impl<'tcx>(
                             None,
                             external_info,
                             autoderive_action.as_ref(),
-                            Some(&mut vir.imaginary_field_paths),
                         )?;
                     }
                     _ => unsupported_err!(item.span, "unsupported item in impl", impl_item_ref),

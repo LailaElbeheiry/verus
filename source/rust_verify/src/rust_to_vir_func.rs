@@ -26,10 +26,10 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
     BodyVisibility, Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind,
-    KrateX, Mode, Opaqueness, ParamX, Path, SpannedTyped, Typ, TypDecoration, TypX, VarIdent,
-    VirErr, Visibility,
+    KrateX, Mode, Opaqueness, ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr,
+    Visibility,
 };
-use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return, ident_binder, unit_typ};
+use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return, unit_typ};
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
 use vir::sst_util::subst_typ;
 
@@ -883,7 +883,6 @@ pub(crate) fn check_item_fn<'tcx>(
     external_fn_specification_via_external_trait: Option<DefId>,
     external_info: &mut ExternalInfo,
     autoderive_action: Option<&AutomaticDeriveAction>,
-    imaginary_field_paths: Option<&mut Vec<Path>>,
 ) -> Result<Option<Fun>, VirErr> {
     let this_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
 
@@ -1004,9 +1003,6 @@ pub(crate) fn check_item_fn<'tcx>(
     let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
     let mut mut_params_redecl: Vec<vir::ast::Stmt> = Vec::new();
     assert!(params.len() == inputs.len());
-    let mut imaginary_field_struct_id = None;
-    let mut imaginary_field_typ_params = None;
-
     for ((name, span, hir_id, is_mut_var), input) in params.into_iter().zip(inputs.iter()) {
         let param_mode = if let Some(hir_id) = hir_id {
             get_var_mode(mode, ctxt.tcx.hir().attrs(hir_id))
@@ -1036,38 +1032,6 @@ pub(crate) fn check_item_fn<'tcx>(
                 typ
             }
         };
-
-        if vattrs.imaginary_field {
-            if vir_params.len() != 0 {
-                return err_span(
-                    span,
-                    format!(
-                        "Functions with the imaginary_field attribute should only have 1 argument"
-                    ),
-                );
-            }
-            match *typ {
-                TypX::Datatype(ref dt, ref typs, _) => {
-                    imaginary_field_struct_id = Some(dt.clone());
-                    let mut typ_params = vec![];
-                    for typ in typs.iter() {
-                        match **typ {
-                            TypX::TypParam(ref id) => typ_params.push(id.clone()),
-                            _ => {
-                                return err_span(
-                                    span,
-                                    format!(
-                                        "imaginary_fields must not instatiate struct's generic type parameters"
-                                    ),
-                                );
-                            }
-                        }
-                    }
-                    imaginary_field_typ_params = Some(Arc::new(typ_params));
-                }
-                _ => {}
-            }
-        }
 
         // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
         let is_mut = is_ref_mut.is_some();
@@ -1306,36 +1270,6 @@ pub(crate) fn check_item_fn<'tcx>(
         (typ_params, typ_bounds)
     };
 
-    if vattrs.imaginary_field {
-        assert!(n_params == 1);
-        assert!(imaginary_field_struct_id.is_some());
-        if imaginary_field_paths.is_none() {
-            return err_span(
-                sig.span,
-                "Unexpected imaginary_field attribute on function declaration",
-            );
-        }
-        imaginary_field_paths.unwrap().push(name.path.clone());
-        let imaginary_field_struct_id = imaginary_field_struct_id.unwrap();
-        let imaginary_field_typ_params = imaginary_field_typ_params.unwrap();
-        let field_name = name.path.segments.last().expect("segment.last");
-        let field_typ = (ret.x.typ).clone();
-        let field_mode = ret.x.mode.clone();
-        let field_visibility = visibility.clone();
-        let binder_args = (field_typ, field_mode, field_visibility);
-        let field = ident_binder(&field_name, &binder_args);
-        match external_info.imaginary_fields.get_mut(&imaginary_field_struct_id) {
-            Some(fields) => {
-                fields.push((imaginary_field_typ_params, field));
-            }
-            None => {
-                external_info
-                    .imaginary_fields
-                    .insert(imaginary_field_struct_id, vec![(imaginary_field_typ_params, field)]);
-            }
-        }
-    }
-
     let body = if vattrs.external_body || vattrs.external_fn_specification || header.no_method_body
     {
         None
@@ -1503,9 +1437,7 @@ pub(crate) fn check_item_fn<'tcx>(
             autospec.redirect_to.clone();
     }
 
-    if !vattrs.imaginary_field {
-        functions.push(function);
-    }
+    functions.push(function);
 
     if let Some(f) = &autospec.new_func {
         functions.push(f.clone());
