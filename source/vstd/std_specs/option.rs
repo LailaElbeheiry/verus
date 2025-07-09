@@ -44,6 +44,7 @@ pub trait OptionAdditionalFns<T>: Sized {
     spec fn arrow_Some_0(&self) -> T;
 
     #[allow(non_snake_case)]
+    #[verifier::enum_accessor]
     spec fn arrow_0(&self) -> T;
 
     /// Auxilliary spec function for the spec of `tracked_unwrap`, `tracked_borrow`, and `tracked_take`.
@@ -54,6 +55,8 @@ pub trait OptionAdditionalFns<T>: Sized {
             self.tracked_is_some(),
         ensures
             t == self->0,
+        guard_effects
+            t = self->0
     ;
 
     proof fn tracked_expect(tracked self, msg: &str) -> (tracked t: T)
@@ -96,11 +99,13 @@ impl<T> OptionAdditionalFns<T> for Option<T> {
     }
 
     #[verifier::inline]
+    #[verifier::enum_accessor]
     open spec fn arrow_Some_0(&self) -> T {
         get_variant_field(self, "Some", "0")
     }
 
     #[verifier::inline]
+    #[verifier::enum_accessor]
     open spec fn arrow_0(&self) -> T {
         get_variant_field(self, "Some", "0")
     }
@@ -185,6 +190,8 @@ pub assume_specification<T>[ Option::<T>::unwrap ](option: Option<T>) -> (t: T)
         option is Some,
     ensures
         t == spec_unwrap(option),
+    guard_effects
+        t = option->0,
 ;
 
 // unwrap_or
@@ -200,6 +207,8 @@ pub open spec fn spec_unwrap_or<T>(option: Option<T>, default: T) -> T {
 pub assume_specification<T>[ Option::<T>::unwrap_or ](option: Option<T>, default: T) -> (t: T)
     ensures
         t == spec_unwrap_or(option, default),
+    guard_effects
+        t = option->0,
 ;
 
 // expect
@@ -217,6 +226,8 @@ pub assume_specification<T>[ Option::<T>::expect ](option: Option<T>, msg: &str)
         option is Some,
     ensures
         t == spec_expect(option, msg),
+    guard_effects
+        t = option->0,
 ;
 
 // take
@@ -224,6 +235,8 @@ pub assume_specification<T>[ Option::<T>::take ](option: &mut Option<T>) -> (t: 
     ensures
         t == old(option),
         *option is None,
+    guard_effects
+        t->0 = old(option)->0,
 ;
 
 // map

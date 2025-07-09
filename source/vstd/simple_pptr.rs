@@ -165,6 +165,11 @@ pub tracked struct PointsTo<V> {
     dealloc: Option<raw_ptr::Dealloc>,
 }
 
+impl<V> PointsTo<V> {
+    #[verifier::imaginary_field]
+    pub open spec fn v(self) -> V;
+}
+
 #[verusfmt::skip]
 broadcast use {
     super::raw_ptr::group_raw_ptr_axioms,
@@ -379,6 +384,8 @@ impl<V> PPtr<V> {
         ensures
             pt.1@.pptr() == pt.0,
             pt.1@.mem_contents() == MemContents::Init(v),
+        guard_effects
+            pt.1@->v = v,
         opens_invariants none
     {
         let (p, Tracked(mut pt)) = PPtr::<V>::empty();
@@ -426,6 +433,8 @@ impl<V> PPtr<V> {
             perm.is_init(),
         ensures
             v == perm.value(),
+        guard_effects
+            v = perm->v,
         opens_invariants none
     {
         let tracked mut perm = perm;
@@ -447,6 +456,8 @@ impl<V> PPtr<V> {
         ensures
             perm.pptr() == old(perm).pptr(),
             perm.mem_contents() == MemContents::Init(v),
+        guard_effects
+            perm->v = v,
         opens_invariants none
         no_unwind
     {
@@ -473,6 +484,8 @@ impl<V> PPtr<V> {
             perm.pptr() == old(perm).pptr(),
             perm.mem_contents() == MemContents::Uninit::<V>,
             v == old(perm).value(),
+        guard_effects
+            v = old(perm)->v,
         opens_invariants none
         no_unwind
     {
