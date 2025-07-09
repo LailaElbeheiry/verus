@@ -131,6 +131,22 @@ pub(crate) fn into_spans(span: Span) -> proc_macro2::extra::DelimSpan {
     group.delim_span()
 }
 
+pub(crate) fn imaginary_field_in_attributes(attrs: &Vec<Attribute>) -> bool {
+    let mut has_imaginary_field = false;
+    for attr in attrs.iter() {
+        match &attr.path().segments.iter().map(|x| &x.ident).collect::<Vec<_>>()[..] {
+            [attr_name1, attr_name2]
+                if attr_name1.to_string() == "verifier"
+                    && attr_name2.to_string() == "imaginary_field" =>
+            {
+                has_imaginary_field = true;
+            }
+            _ => {}
+        }
+    }
+    has_imaginary_field
+}
+
 macro_rules! stmt_with_semi {
     ($b:ident, $span:expr => $($tok:tt)*) => {
         {
@@ -811,6 +827,33 @@ impl Visitor {
             attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
         }
 
+        let is_imaginary_field = imaginary_field_in_attributes(&*attrs);
+        if is_imaginary_field {
+            let span = sig.fn_token.span;
+            attrs.push(mk_rust_attr(span, "cfg", quote! { verus_keep_ghost }));
+            attrs.push(mk_rust_attr(span, "allow", quote! { non_snake_case }));
+            attrs.push(mk_verus_attr(span, quote! { open }));
+            attrs.push(mk_verus_attr(span, quote! { spec }));
+
+            let mut path_segments = syn_verus::punctuated::Punctuated::new();
+            path_segments.push(syn_verus::PathSegment {
+                ident: syn_verus::Ident::new("verifier", span),
+                arguments: syn_verus::PathArguments::None,
+            });
+            path_segments.push(syn_verus::PathSegment {
+                ident: syn_verus::Ident::new("inline", span),
+                arguments: syn_verus::PathArguments::None,
+            });
+            let path = syn_verus::Path { leading_colon: None, segments: path_segments };
+            let attr = syn_verus::Attribute {
+                pound_token: syn_verus::token::Pound { spans: [span] },
+                style: syn_verus::AttrStyle::Outer,
+                bracket_token: syn_verus::token::Bracket { span: into_spans(span) },
+                meta: syn_verus::Meta::Path(path),
+            };
+            attrs.push(attr);
+        }
+
         for arg in &mut sig.inputs {
             match (arg.tracked, &mut arg.kind) {
                 _ if self.erase_ghost.erase_all() => {}
@@ -928,15 +971,15 @@ impl Visitor {
             }
         };
 
-        let (unimpl, ext_attrs) = match (&sig.mode, semi_token, is_trait) {
-            (FnMode::ProofAxiom(_), Some(semi), false) => {
+        let (unimpl, ext_attrs) = match (&sig.mode, semi_token, is_trait, is_imaginary_field) {
+            (FnMode::ProofAxiom(_), Some(semi), false, false) => {
                 let unimpl = vec![Stmt::Expr(
                     Expr::Verbatim(quote_spanned!(semi.span => unimplemented!())),
                     None,
                 )];
                 (unimpl, vec![mk_verus_attr(semi.span, quote! { external_body })])
             }
-            (FnMode::Spec(_) | FnMode::SpecChecked(_), Some(semi), false) => {
+            (FnMode::Spec(_) | FnMode::SpecChecked(_), Some(semi), false, false) => {
                 // uninterpreted function
                 let unimpl = vec![Stmt::Expr(
                     Expr::Verbatim(quote_spanned!(semi.span => unimplemented!())),
@@ -953,8 +996,33 @@ impl Visitor {
                 }
                 (unimpl, vec![mk_verus_attr(semi.span, quote! { external_body })])
             }
+            (FnMode::Spec(_), Some(semi), false, true) => {
+                // uninterpreted function
+                let field_str = sig.ident.to_string();
+                let unimpl = vec![Stmt::Expr(
+                    Expr::Verbatim(
+                        quote_spanned_builtin! { builtin, semi.span => #builtin::get_imaginary_field(self, #field_str) },
+                    ),
+                    None,
+                )];
+                #[cfg(verus_keep_ghost)]
+                if !matches!(&sig.publish, Publish::Open(_)) {
+                    proc_macro::Diagnostic::spanned(
+                        sig.span().unwrap(),
+                        proc_macro::Level::Warning,
+                        "imaginary_field functions should be marked as `open`",
+                    )
+                    .emit();
+                }
+                (unimpl, vec![])
+            }
             _ => (vec![], vec![]),
         };
+
+        if is_imaginary_field {
+            let s = sig.ident.to_string();
+            sig.ident = syn::Ident::new(&format!("arrow_{s}"), sig.ident.span());
+        }
 
         let (inside_ghost, mode_attrs): (u32, Vec<Attribute>) = match &sig.mode {
             FnMode::Default => (0, vec![]),

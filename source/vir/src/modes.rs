@@ -636,7 +636,14 @@ fn get_var_loc_mode(
             *to_mode
         }
         ExprX::UnaryOpr(
-            UnaryOpr::Field(FieldOpr { datatype, variant: _, field, get_variant, check: _ }),
+            UnaryOpr::Field(FieldOpr {
+                datatype,
+                variant: _,
+                field,
+                get_variant,
+                check: _,
+                imaginary_field,
+            }),
             rcvr,
         ) => {
             let rcvr_mode = get_var_loc_mode(
@@ -666,7 +673,7 @@ fn get_var_loc_mode(
                 }
                 Dt::Tuple(_arity) => Mode::Exec,
             };
-            let call_mode = if *get_variant { Mode::Spec } else { rcvr_mode };
+            let call_mode = if *get_variant || *imaginary_field { Mode::Spec } else { rcvr_mode };
             mode_join(call_mode, field_mode)
         }
         ExprX::Block(stmts, Some(e1)) if stmts.len() == 0 => {
@@ -1059,7 +1066,14 @@ fn check_expr_handle_mut_arg(
             check_expr(ctxt, record, typing, outer_mode, e1)
         }
         ExprX::UnaryOpr(
-            UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant, check: _ }),
+            UnaryOpr::Field(FieldOpr {
+                datatype,
+                variant,
+                field,
+                get_variant,
+                check: _,
+                imaginary_field,
+            }),
             e1,
         ) => {
             if *get_variant && ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
@@ -1073,16 +1087,23 @@ fn check_expr_handle_mut_arg(
                 .field_loc_needs_check
                 .insert(expr.span.id, e1_mode_write != None && e1_mode_write != Some(Mode::Spec));
 
-            let field_mode = match datatype {
-                Dt::Path(path) => {
-                    let datatype = &ctxt.datatypes[path];
-                    let field = get_field(&datatype.x.get_variant(variant).fields, field);
-                    field.a.1
+            let field_mode = if *imaginary_field {
+                Mode::Spec
+            } else {
+                match datatype {
+                    Dt::Path(path) => {
+                        let datatype = &ctxt.datatypes[path];
+                        let field = get_field(&datatype.x.get_variant(variant).fields, field);
+                        field.a.1
+                    }
+                    Dt::Tuple(_) => Mode::Exec,
                 }
-                Dt::Tuple(_) => Mode::Exec,
             };
-            let mode_read =
-                if *get_variant { Mode::Spec } else { mode_join(e1_mode_read, field_mode) };
+            let mode_read = if *get_variant || *imaginary_field {
+                Mode::Spec
+            } else {
+                mode_join(e1_mode_read, field_mode)
+            };
             if let Some(e1_mode_write) = e1_mode_write {
                 return Ok((mode_read, Some(mode_join(e1_mode_write, field_mode))));
             } else {

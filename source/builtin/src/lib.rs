@@ -322,6 +322,13 @@ pub fn get_union_field<Adt, Field>(_a: Adt, _field: &str) -> Field {
 }
 
 #[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::get_imaginary_field"]
+#[verifier::spec]
+pub fn get_imaginary_field<Adt, Field>(_a: Adt, _field: &str) -> Field {
+    unimplemented!();
+}
+
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::assume_"]
 #[verifier::proof]
 pub fn assume_(_: bool) {

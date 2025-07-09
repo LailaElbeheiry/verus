@@ -2110,6 +2110,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         field: field_name,
                         get_variant: false,
                         check,
+                        imaginary_field: false,
                     }),
                     vir_lhs,
                 ),

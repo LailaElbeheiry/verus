@@ -30,9 +30,9 @@ use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, BuiltinSpecFun, CallTarget,
-    ChainedOp, ComputeMode, Constant, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp,
-    IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, MultiOp, Quant, Typ, TypX, UnaryOp,
-    UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
+    ChainedOp, ComputeMode, Constant, Dt, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX,
+    InequalityOp, IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, MultiOp, Quant, Typ, TypX,
+    UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -903,6 +903,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         field: variant_field.unwrap(),
                         get_variant: true,
                         check: VariantCheck::None,
+                        imaginary_field: false,
                     }),
                     adt_arg,
                 ))
@@ -929,6 +930,27 @@ fn verus_item_to_vir<'tcx, 'a>(
                         field: field_ident_from_rust(&field_ident),
                         get_variant: true,
                         check: VariantCheck::None,
+                        imaginary_field: false,
+                    }),
+                    adt_arg,
+                ))
+            }
+            ExprItem::GetImaginaryField => {
+                record_spec_fn_allow_proof_args(bctx, expr);
+                assert!(args.len() == 2);
+                let adt_arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+                let field_name = get_string_lit_arg(&args[1], &f_name)?;
+
+                let (adt_path, variant_name) = check_imaginary_field(bctx, expr.span, args[0])?;
+
+                mk_expr(ExprX::UnaryOpr(
+                    UnaryOpr::Field(FieldOpr {
+                        datatype: adt_path,
+                        variant: variant_name,
+                        field: str_ident(&field_name),
+                        get_variant: false,
+                        check: VariantCheck::None,
+                        imaginary_field: true,
                     }),
                     adt_arg,
                 ))
@@ -2304,6 +2326,47 @@ fn check_union_field<'tcx>(
     };
 
     Ok(adt_path)
+}
+
+fn check_imaginary_field<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    adt_arg: &'tcx Expr<'tcx>,
+) -> Result<(vir::ast::Dt, vir::ast::Ident), VirErr> {
+    let tcx = bctx.ctxt.tcx;
+
+    let ty = bctx.types.expr_ty_adjusted(adt_arg);
+    let ty = match ty.kind() {
+        rustc_middle::ty::TyKind::Ref(_, t, rustc_ast::Mutability::Not) => t,
+        _ => &ty,
+    };
+    let adt = match ty.kind() {
+        rustc_middle::ty::TyKind::Adt(adt, _) => adt,
+        _ => {
+            return err_span(span, format!("expected type to be datatype"));
+        }
+    };
+
+    if !adt.is_struct() {
+        return err_span(span, format!("get_imaginary_field expects a struct type"));
+    }
+
+    let vir_adt_ty = mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &ty, false)?;
+    let (adt_path, variant_name) = match &*vir_adt_ty {
+        TypX::Datatype(path, _, _) => match path {
+            Dt::Path(p) => {
+                (path.clone(), p.segments.last().expect("unexpected struct path").clone())
+            }
+            _ => {
+                return err_span(span, format!("expected type to be datatype"));
+            }
+        },
+        _ => {
+            return err_span(span, format!("expected type to be datatype"));
+        }
+    };
+
+    Ok((adt_path, variant_name))
 }
 
 fn record_compilable_operator<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, op: CompilableOperator) {

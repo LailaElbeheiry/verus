@@ -1026,7 +1026,17 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let name = Arc::new(ARCH_SIZE.to_string());
                 Arc::new(ExprX::Var(name))
             }
-            UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }) => {
+            UnaryOpr::Field(FieldOpr {
+                datatype,
+                variant,
+                field,
+                get_variant: _,
+                check: _,
+                imaginary_field,
+            }) => {
+                if *imaginary_field {
+                    panic!("internal error: imaginary field should have been removed before here");
+                }
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 let (ts, num_variants) = match &*undecorate_typ(&exp.typ) {
                     TypX::Datatype(Dt::Path(p), ts, _) => {
@@ -1517,8 +1527,14 @@ fn assume_other_fields_unchanged_inner(
         [f] if f.len() == 0 => Ok(vec![]),
         _ => {
             let mut updated_fields: BTreeMap<_, Vec<_>> = BTreeMap::new();
-            let FieldOpr { datatype: dt, variant, field: _, get_variant: _, check: _ } =
-                &updates[0][0];
+            let FieldOpr {
+                datatype: dt,
+                variant,
+                field: _,
+                get_variant: _,
+                check: _,
+                imaginary_field: _,
+            } = &updates[0][0];
             for u in updates {
                 assert!(u[0].datatype == *dt && u[0].variant == *variant);
                 updated_fields.entry(&u[0].field).or_insert(Vec::new()).push(u[1..].to_vec());
@@ -1573,6 +1589,7 @@ fn assume_other_fields_unchanged_inner(
                                 field: field.name.clone(),
                                 get_variant: false,
                                 check: VariantCheck::None,
+                                imaginary_field: false,
                             }),
                             base_exp,
                         ),

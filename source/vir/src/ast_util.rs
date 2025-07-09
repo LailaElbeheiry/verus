@@ -753,6 +753,7 @@ pub fn mk_tuple_field_x(expr: &Expr, arity: usize, idx: usize) -> ExprX {
         field: crate::def::positional_field_ident(idx),
         get_variant: false,
         check: crate::ast::VariantCheck::None,
+        imaginary_field: false,
     });
     ExprX::UnaryOpr(field_opr, expr.clone())
 }

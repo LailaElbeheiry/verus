@@ -379,6 +379,7 @@ pub struct FieldOpr {
     /// (This is relevant for mode-checking.)
     pub get_variant: bool,
     pub check: VariantCheck,
+    pub imaginary_field: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
@@ -1060,6 +1061,10 @@ pub struct FunctionAttrsX {
     pub exec_assume_termination: bool,
     /// Whether to allow this function to not terminate
     pub exec_allows_no_decreases_clause: bool,
+    // Does this function implement an imaginary field on a struct?
+    pub imaginary_field: bool,
+    // Does this function implement an enum field accessor
+    pub enum_accessor: bool,
 }
 
 /// Function specification of its invariant mask

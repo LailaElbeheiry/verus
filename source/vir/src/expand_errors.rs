@@ -831,6 +831,7 @@ pub fn field_exp(exp: &Exp, field_typ: &Typ, datatype: &Dt, variant: &Ident, fie
                 field: field.clone(),
                 get_variant: false,
                 check: VariantCheck::None,
+                imaginary_field: false,
             }),
             exp.clone(),
         ),

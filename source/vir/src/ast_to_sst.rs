@@ -1304,6 +1304,7 @@ pub(crate) fn expr_to_stm_opt(
                         field: _,
                         get_variant: _,
                         check: VariantCheck::Yes,
+                        imaginary_field: _,
                     }),
                     false,
                 ) => {

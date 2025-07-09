@@ -184,6 +184,7 @@ pub(crate) fn visit_item_enum_synthesize(
                         #[verus::internal(verus_macro)]
                         #[verus::internal(spec)]
                         #[verifier::inline]
+                        #[verifier::enum_accessor]
                         #publish
                         #vis fn #method_ident(self) -> #ty_ {
                             #builtin::get_variant_field(self, #variant_ident, #field_str)
@@ -197,6 +198,7 @@ pub(crate) fn visit_item_enum_synthesize(
                         #[verus::internal(spec)]
                         #[verus::internal(get_field_many_variants)]
                         #[verifier::external]
+                        #[verifier::enum_accessor]
                         #publish
                         #vis fn #method_ident(self) -> #ty_ {
                             unimplemented!()
@@ -239,6 +241,7 @@ pub(crate) fn visit_item_enum_synthesize(
                     #[verus::internal(verus_macro)]
                     #[verus::internal(spec)]
                     #[verifier::inline]
+                    #[verifier::enum_accessor]
                     #publish
                     #vis fn #method_ident(self) -> #ty_ {
                         #builtin::get_variant_field(self, #variant_ident, #field_str)

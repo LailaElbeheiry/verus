@@ -421,7 +421,14 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
         }
         ExpX::UnaryOpr(
-            UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }),
+            UnaryOpr::Field(FieldOpr {
+                datatype,
+                variant,
+                field,
+                get_variant: _,
+                check: _,
+                imaginary_field: _,
+            }),
             lhs,
         ) => {
             let (is_pure, arg) = gather_terms(ctxt, ctx, lhs, depth + 1);

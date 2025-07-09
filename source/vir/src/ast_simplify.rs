@@ -186,6 +186,7 @@ fn pattern_to_exprs_rec(
                     field: binder.name.clone(),
                     get_variant: false,
                     check: VariantCheck::None,
+                    imaginary_field: false,
                 });
                 let field_exp = pattern_field_expr(&pattern.span, expr, &binder.a.typ, field_op);
                 let pattern_test = pattern_to_exprs_rec(ctx, state, &field_exp, &binder.a, decls)?;
@@ -423,6 +424,7 @@ fn simplify_one_expr(
                         field: field.name.clone(),
                         get_variant: false,
                         check: VariantCheck::None,
+                        imaginary_field: false,
                     });
                     let exprx = ExprX::UnaryOpr(op, update.clone());
                     let ty = subst_typ_for_datatype(&typ_positives, typ_args, &field.a.0);
@@ -632,6 +634,7 @@ fn tuple_get_field_expr(
         field,
         get_variant: false,
         check: VariantCheck::None,
+        imaginary_field: false,
     });
     let field_expr = SpannedTyped::new(span, typ, ExprX::UnaryOpr(op, tuple_expr.clone()));
     field_expr

@@ -570,6 +570,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     field,
                     get_variant: _,
                     check: _,
+                    imaginary_field: _,
                 }) => {
                     let fields = &ctx.datatype_map[datatype].x.get_variant(variant).fields;
                     let field = crate::ast_util::get_field(fields, field);

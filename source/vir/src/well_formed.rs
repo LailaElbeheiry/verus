@@ -408,9 +408,40 @@ fn check_one_expr(
                 field: _,
                 get_variant: _,
                 check: _,
+                imaginary_field: false,
             }),
             _,
         ) => {
+            check_datatype_access(
+                ctxt,
+                path,
+                disallow_private_access,
+                &function.x.owning_module,
+                &expr.span,
+                "field expression",
+            )?;
+        }
+        ExprX::UnaryOpr(
+            UnaryOpr::Field(FieldOpr {
+                datatype: Dt::Path(path),
+                variant: _,
+                field: _,
+                get_variant: _,
+                check: _,
+                imaginary_field,
+            }),
+            _,
+        ) => {
+            if *imaginary_field {
+                if !function.x.attrs.imaginary_field {
+                    return Err(error(
+                        &expr.span,
+                        "imaginary fields in VIR can only appear in imaginary fields functions",
+                    ));
+                } else {
+                    return Ok(());
+                }
+            }
             check_datatype_access(
                 ctxt,
                 path,
@@ -480,7 +511,10 @@ fn check_one_expr(
                     return Ok(());
                 }
                 _ => {
-                    return Err(error(&expr.span, "end_region must be applied to a reference type"));
+                    return Err(error(
+                        &expr.span,
+                        "end_region must be applied to a reference type",
+                    ));
                 }
             };
         }
@@ -1028,13 +1062,18 @@ fn check_function(
         check_expr(ctxt, function, ens, disallow_private_access, Place::PostState, diags)?;
     }
     for eff in function.x.guard_effects.iter() {
-        fn is_ok(e: &Expr) -> bool {
+        fn is_ok(ctxt: &Ctxt, e: &Expr) -> bool {
             match &e.x {
-                ExprX::Unary(UnaryOp::CoerceMode { .. }, e1) => is_ok(e1),
-                ExprX::UnaryOpr(UnaryOpr::Field { .. }, base) => is_ok(base),
-                ExprX::Block(stmts, Some(e1)) if stmts.len() == 0 => is_ok(e1),
-                ExprX::Ghost { alloc_wrapper: false, tracked: true, expr: e1 } => is_ok(e1),
-                ExprX::Loc(l) => is_ok(l),
+                ExprX::Unary(UnaryOp::CoerceMode { .. }, e1) => is_ok(ctxt, e1),
+                ExprX::UnaryOpr(UnaryOpr::Field { .. }, base) => is_ok(ctxt, base),
+                ExprX::Block(stmts, Some(e1)) if stmts.len() == 0 => is_ok(ctxt, e1),
+                ExprX::Ghost { alloc_wrapper: false, tracked: true, expr: e1 } => is_ok(ctxt, e1),
+                ExprX::Loc(l) => is_ok(ctxt, l),
+                ExprX::Call(CallTarget::Fun(_, fun, _, _, _), _args) => {
+                    let callee = ctxt.funs.get(fun).unwrap();
+                    callee.x.attrs.imaginary_field || callee.x.attrs.enum_accessor
+                    // && args.iter().all(|arg| { is_ok(ctxt, arg.x) })
+                }
                 ExprX::Var(_) | ExprX::VarLoc(_) | ExprX::VarAt(..) => true,
                 _ => false,
             }
@@ -1075,12 +1114,13 @@ fn check_function(
 
                 for field in fields.iter() {
                     // check that p is simple
-                    if !is_ok(&field.a) {
-                        dbg!(&field.a.x);
+                    if !is_ok(ctxt, &field.a) {
+                        dbg!(field);
                         return Err(error(
                             &field.a.span,
-                            "complex expressions in guard_effects clauses are not allowed",
-                        ));
+                            "complex expressions in `guard_effects` clauses are not allowed",
+                        )
+                        .help("consider deconstructing the pattern in the lhs"));
                     }
                 }
             }

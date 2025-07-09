@@ -183,6 +183,8 @@ fn handle_autospec<'tcx>(
                     is_unsafe: false,
                     exec_assume_termination: false,
                     exec_allows_no_decreases_clause: false,
+                    imaginary_field: false,
+                    enum_accessor: false,
                 }),
                 body: Some(ret_clause.clone()),
                 extra_dependencies: functionx.extra_dependencies.clone(),
@@ -861,6 +863,8 @@ fn make_attributes<'tcx>(
         } else {
             vattrs.exec_allows_no_decreases_clause
         },
+        imaginary_field: vattrs.imaginary_field,
+        enum_accessor: vattrs.enum_accessor,
     };
     Ok(Arc::new(fattrs))
 }

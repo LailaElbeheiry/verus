@@ -818,7 +818,16 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             let token: Token![guard_effects] = input.parse()?;
             let mut exprs = Punctuated::new();
-            while !(input.is_empty() || input.peek(token::Brace)) {
+            while !(input.is_empty()
+                || input.peek(token::Brace)
+                || input.peek(Token![;])
+                || input.peek(Token![returns])
+                || input.peek(Token![decreases])
+                || input.peek(Token![via])
+                || input.peek(Token![when])
+                || input.peek(Token![no_unwind])
+                || input.peek(Token![opens_invariants]))
+            {
                 exprs.push(input.parse()?);
                 if !input.peek(Token![,]) {
                     break;

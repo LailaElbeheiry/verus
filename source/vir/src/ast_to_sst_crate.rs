@@ -43,7 +43,9 @@ pub fn ast_to_sst_krate(
                 assert!(!sst_infos.contains_key(&func_sst.x.name));
                 sst_infos.insert(func_sst.x.name.clone(), func_sst.clone());
             }
-            functions.push(func_sst.clone());
+            if !func_sst.x.attrs.imaginary_field {
+                functions.push(func_sst.clone());
+            }
         }
     }
     assert!(func_workmap.len() == 0);
