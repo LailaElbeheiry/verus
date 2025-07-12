@@ -43,9 +43,7 @@ pub fn ast_to_sst_krate(
                 assert!(!sst_infos.contains_key(&func_sst.x.name));
                 sst_infos.insert(func_sst.x.name.clone(), func_sst.clone());
             }
-            if !func_sst.x.attrs.imaginary_field {
-                functions.push(func_sst.clone());
-            }
+            functions.push(func_sst.clone());
         }
     }
     assert!(func_workmap.len() == 0);
@@ -57,6 +55,12 @@ pub fn ast_to_sst_krate(
         assert!(!ctx.func_sst_map.contains_key(&func_sst.x.name));
         ctx.func_sst_map.insert(func_sst.x.name.clone(), func_sst.clone());
     }
+
+    // Implement analysis here
+    // Should output some information to interface with the lifetime generate replacement pass which informs how THIR gets constructed
+
+    // Remove imaginary_fields functions
+    functions.retain(|func_sst| !func_sst.x.attrs.imaginary_field);
 
     let krate_sst = Arc::new(KrateSstX {
         functions,

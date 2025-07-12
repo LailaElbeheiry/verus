@@ -117,6 +117,22 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                         }
                         guard_ensure = Some((id_typ.clone(), es.clone()));
                     }
+                    HeaderExprX::EnsuresAndGuardEnsures(id_typ, es, ges) => {
+                        if ensure.is_some() {
+                            return Err(error(
+                                &stmt.span,
+                                "only one call to ensures allowed (use ensures([e1, ..., en]) for multiple expressions",
+                            ));
+                        }
+                        ensure = Some((id_typ.clone(), es.clone()));
+                        if guard_ensure.is_some() {
+                            return Err(error(
+                                &stmt.span,
+                                "only one call to guard_ensures allowed (use guard_ensures([e1, ..., en]) for multiple expressions",
+                            ));
+                        }
+                        guard_ensure = Some((id_typ.clone(), ges.clone()));
+                    }
                     HeaderExprX::GuardEffects(id_typ, es) => {
                         if guard_effects.is_some() {
                             return Err(error(

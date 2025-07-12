@@ -81,6 +81,27 @@ pub(crate) fn extract_array<'tcx>(expr: &'tcx Expr<'tcx>) -> Vec<&'tcx Expr<'tcx
     }
 }
 
+pub(crate) fn extract_len_and_array<'tcx>(expr: &'tcx Expr<'tcx>) -> Result<(usize, Vec<&'tcx Expr<'tcx>>), VirErr> {
+    match &expr.kind {
+        ExprKind::Tup([specs, n]) =>
+            {
+                let ExprKind::Lit(n_lit) = &n.kind else {
+                    unsupported_err!(expr.span, "expected a u32");
+                };
+                let rustc_ast::LitKind::Int(n_val, _) = n_lit.node else {
+                    unsupported_err!(expr.span, "expected a u32");
+                    // return Err(vir::messages::error(expr.span, "expected a u32"));
+                };
+                let n = n_val.get();
+                match &specs.kind {
+                    ExprKind::Array(fields) => Ok((n as usize, fields.iter().collect())),
+                    _ => Ok((1, vec![expr])),
+                }
+            }
+        _ => Ok((1, vec![expr])),
+    }
+}
+
 pub(crate) fn extract_tuple<'tcx>(expr: &'tcx Expr<'tcx>) -> Vec<&'tcx Expr<'tcx>> {
     match &expr.kind {
         ExprKind::Tup(exprs) => exprs.iter().collect(),

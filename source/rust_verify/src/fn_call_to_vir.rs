@@ -9,7 +9,7 @@ use crate::rust_to_vir_base::{
 };
 use crate::rust_to_vir_expr::{
     ExprModifier, check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir, extract_array,
-    extract_tuple, get_fn_path, is_expr_typ_mut_ref, mk_ty_clip, pat_to_var,
+    extract_tuple, extract_len_and_array, get_fn_path, is_expr_typ_mut_ref, mk_ty_clip, pat_to_var,
 };
 use crate::util::{err_span, vec_map, vec_map_result, vir_err_span_str};
 use crate::verus_items::{
@@ -66,7 +66,6 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                         | SpecItem::GuardRequires
                         | SpecItem::Recommends
                         | SpecItem::Ensures
-                        | SpecItem::GuardEnsures
                         | SpecItem::GuardEffects
                         | SpecItem::Returns
                         | SpecItem::OpensInvariantsNone
@@ -500,15 +499,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                 unsupported_err_unless!(args_len == 1, expr.span, "expected ensures", &args);
                 let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
                 let header = extract_ensures(&bctx, args[0])?;
+
                 // extract_ensures does most of the necessary work, so we can return at this point
-                mk_expr_span(args[0].span, ExprX::Header(header))
-            }
-            SpecItem::GuardEnsures => {
-                // FIXME(automation) guard_ensures are allowed to mention tracked variables
-                record_spec_fn_no_proof_args(bctx, expr);
-                unsupported_err_unless!(args_len == 1, expr.span, "expected guard_ensures", &args);
-                let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                let header = extract_guard_ensures(&bctx, args[0])?;
                 mk_expr_span(args[0].span, ExprX::Header(header))
             }
             SpecItem::GuardEffects => {
@@ -1664,6 +1656,7 @@ fn extract_ensures<'tcx>(
 ) -> Result<HeaderExpr, VirErr> {
     let expr = skip_closure_coercion(bctx, expr);
     let tcx = bctx.ctxt.tcx;
+    let mut id_typ = None;
     match &expr.kind {
         ExprKind::Closure(closure) => {
             let typs: Vec<Typ> = closure_param_typs(bctx, expr)?;
@@ -1673,51 +1666,41 @@ fn extract_ensures<'tcx>(
                 xs.push(pat_to_var(param.pat)?);
             }
             let expr = &body.value;
-            let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(bctx, e))?;
+            let (n, mut v) = extract_len_and_array(expr)?;
+            let guard_ensure_exps = v.split_off(n);
+            let ensure_exps = v;
+            let ensure_args = vec_map_result(&ensure_exps, |e| get_ensures_arg(bctx, e))?;
+            let guard_ensure_args = vec_map_result(&guard_ensure_exps, |e| get_ensures_arg(bctx, e))?;
             if typs.len() == 1 && xs.len() == 1 {
-                let id_typ = Some((xs[0].clone(), typs[0].clone()));
-                Ok(Arc::new(HeaderExprX::Ensures(id_typ, Arc::new(args))))
-            } else if typs.len() == 0 && xs.len() == 0 {
-                Ok(Arc::new(HeaderExprX::Ensures(None, Arc::new(args))))
-            } else {
-                err_span(expr.span, "expected 1 parameter in closure")
+                id_typ = Some((xs[0].clone(), typs[0].clone()));
+            } else if typs.len() != 0 || xs.len() != 0 {
+                return err_span(expr.span, "expected 1 parameter in closure");
+            }
+            if 0 < ensure_args.len() && 0 < guard_ensure_args.len() {
+                Ok(Arc::new(HeaderExprX::EnsuresAndGuardEnsures(id_typ.clone(), Arc::new(ensure_args), Arc::new(guard_ensure_args))))
+            }
+            else if 0 < ensure_args.len() {
+                Ok(Arc::new(HeaderExprX::Ensures(id_typ.clone(), Arc::new(ensure_args))))
+            }
+            else {
+                Ok(Arc::new(HeaderExprX::GuardEnsures(id_typ.clone(), Arc::new(guard_ensure_args))))
             }
         }
         _ => {
-            let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(bctx, e))?;
-            Ok(Arc::new(HeaderExprX::Ensures(None, Arc::new(args))))
-        }
-    }
-}
-
-fn extract_guard_ensures<'tcx>(
-    bctx: &BodyCtxt<'tcx>,
-    expr: &'tcx Expr<'tcx>,
-) -> Result<HeaderExpr, VirErr> {
-    let expr = skip_closure_coercion(bctx, expr);
-    let tcx = bctx.ctxt.tcx;
-    match &expr.kind {
-        ExprKind::Closure(closure) => {
-            let typs: Vec<Typ> = closure_param_typs(bctx, expr)?;
-            let body = tcx.hir().body(closure.body);
-            let mut xs: Vec<VarIdent> = Vec::new();
-            for param in body.params.iter() {
-                xs.push(pat_to_var(param.pat)?);
+            let (n, mut v) = extract_len_and_array(expr)?;
+            let guard_ensure_exps = v.split_off(n);
+            let ensure_exps = v;
+            let ensure_args = vec_map_result(&ensure_exps, |e| get_ensures_arg(bctx, e))?;
+            let guard_ensure_args = vec_map_result(&guard_ensure_exps, |e| get_ensures_arg(bctx, e))?;
+            if 0 < ensure_args.len() && 0 < guard_ensure_args.len() {
+                Ok(Arc::new(HeaderExprX::EnsuresAndGuardEnsures(id_typ.clone(), Arc::new(ensure_args), Arc::new(guard_ensure_args))))
             }
-            let expr = &body.value;
-            let args = vec_map_result(&extract_array(expr), |e| get_guard_ensures_arg(bctx, e))?;
-            if typs.len() == 1 && xs.len() == 1 {
-                let id_typ = Some((xs[0].clone(), typs[0].clone()));
-                Ok(Arc::new(HeaderExprX::GuardEnsures(id_typ, Arc::new(args))))
-            } else if typs.len() == 0 && xs.len() == 0 {
-                Ok(Arc::new(HeaderExprX::GuardEnsures(None, Arc::new(args))))
-            } else {
-                err_span(expr.span, "expected 1 parameter in closure")
+            else if 0 < ensure_args.len() {
+                Ok(Arc::new(HeaderExprX::Ensures(id_typ.clone(), Arc::new(ensure_args))))
             }
-        }
-        _ => {
-            let args = vec_map_result(&extract_array(expr), |e| get_guard_ensures_arg(bctx, e))?;
-            Ok(Arc::new(HeaderExprX::GuardEnsures(None, Arc::new(args))))
+            else {
+                Ok(Arc::new(HeaderExprX::GuardEnsures(id_typ.clone(), Arc::new(guard_ensure_args))))
+            }
         }
     }
 }
@@ -1836,34 +1819,6 @@ fn get_ensures_arg<'tcx>(
         expr_to_vir(bctx, expr, ExprModifier::REGULAR)
     } else {
         err_span(expr.span, "ensures needs a bool expression")
-    }
-}
-
-// TODO(automation) change this for checking trait implementation?
-fn get_guard_ensures_arg<'tcx>(
-    bctx: &BodyCtxt<'tcx>,
-    expr: &Expr<'tcx>,
-) -> Result<vir::ast::Expr, VirErr> {
-    let mut is_guards = false;
-    if let ExprKind::Call(fun, _) = expr.kind {
-        match &fun.kind {
-            ExprKind::Path(qpath) => {
-                if let rustc_hir::def::Res::Def(_, def_id) =
-                    bctx.types.qpath_res(&qpath, fun.hir_id)
-                {
-                    is_guards = matches!(
-                        bctx.ctxt.verus_items.id_to_name.get(&def_id),
-                        Some(&VerusItem::Vstd(VstdItem::Guards, _)),
-                    );
-                }
-            }
-            _ => {}
-        }
-    }
-    if is_guards {
-        expr_to_vir(bctx, expr, ExprModifier::REGULAR)
-    } else {
-        err_span(expr.span, "guard_ensures must only contain guards assertions")
     }
 }
 

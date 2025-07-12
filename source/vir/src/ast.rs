@@ -548,6 +548,7 @@ pub enum HeaderExprX {
     Ensures(Option<(VarIdent, Typ)>, Exprs),
     /// Guards Postconditions on exec/proof functions, with an optional name and type for the return value
     GuardEnsures(Option<(VarIdent, Typ)>, Exprs),
+    EnsuresAndGuardEnsures(Option<(VarIdent, Typ)>, Exprs, Exprs),
     GuardEffects(Option<(VarIdent, Typ)>, Exprs),
     /// Returns clause
     Returns(Expr),
