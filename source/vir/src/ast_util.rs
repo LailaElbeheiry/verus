@@ -1156,9 +1156,6 @@ impl HeaderExprX {
             | HeaderExprX::NoMethodBody
             | HeaderExprX::Requires(_)
             | HeaderExprX::GuardRequires(_)
-            | HeaderExprX::GuardEnsures(..)
-            | HeaderExprX::EnsuresAndGuardEnsures(..)
-            | HeaderExprX::GuardEffects(..)
             | HeaderExprX::Returns(_)
             | HeaderExprX::Recommends(_)
             | HeaderExprX::DecreasesWhen(_)
@@ -1175,10 +1172,11 @@ impl HeaderExprX {
             HeaderExprX::InvariantExceptBreak(_) | HeaderExprX::Invariant(_) => {
                 "beginning of a loop body"
             }
-
-            HeaderExprX::Ensures(..) | HeaderExprX::Decreases(_) => {
-                "beginning of the function body or a loop body"
+            HeaderExprX::Postconditions(_, _, ges, gef) if ges.len() != 0 || gef.len() != 0 => {
+                "beginning of the function body"
             }
+            HeaderExprX::Postconditions(..) => "beginning of the function body or a loop body",
+            HeaderExprX::Decreases(_) => "beginning of the function body or a loop body",
         }
     }
 }

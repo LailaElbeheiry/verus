@@ -345,6 +345,8 @@ impl<V> PPtr<V> {
         ensures
             pt.1@.pptr() == pt.0,
             pt.1@.is_uninit(),
+        guard_ensures
+            guards(pt.1@, pt.0),
         opens_invariants none
     {
         layout_for_type_is_valid::<V>();
@@ -384,6 +386,8 @@ impl<V> PPtr<V> {
         ensures
             pt.1@.pptr() == pt.0,
             pt.1@.mem_contents() == MemContents::Init(v),
+        guard_ensures
+            guards(pt.1@, pt.0),
         guard_effects
             pt.1@->v = v,
         opens_invariants none

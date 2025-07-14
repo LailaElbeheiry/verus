@@ -1,4 +1,5 @@
 use super::prelude::*;
+use super::simple_pptr::*;
 
 verus! {
 
@@ -15,6 +16,12 @@ impl GuardedBy<u32> for u32 {
     open spec fn guarded_by(self, b: u32) -> bool {
         true  // TODO: implement this
 
+    }
+}
+
+impl<V> GuardedBy<PointsTo<V>> for PPtr<V> {
+    open spec fn guarded_by(self, perm: PointsTo<V>) -> bool {
+        perm.pptr() == self
     }
 }
 

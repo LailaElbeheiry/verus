@@ -544,12 +544,8 @@ pub enum HeaderExprX {
     Requires(Exprs),
     /// Guards preconditions on exec/proof functions
     GuardRequires(Exprs),
-    /// Postconditions on exec/proof functions, with an optional name and type for the return value
-    Ensures(Option<(VarIdent, Typ)>, Exprs),
-    /// Guards Postconditions on exec/proof functions, with an optional name and type for the return value
-    GuardEnsures(Option<(VarIdent, Typ)>, Exprs),
-    EnsuresAndGuardEnsures(Option<(VarIdent, Typ)>, Exprs, Exprs),
-    GuardEffects(Option<(VarIdent, Typ)>, Exprs),
+    /// Postconditions on exec/proof functions, with an optional name and type for the return value. (This includes ensures, guard_ensures, and guard_effects)
+    Postconditions(Option<(VarIdent, Typ)>, Exprs, Exprs, Exprs),
     /// Returns clause
     Returns(Expr),
     /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.

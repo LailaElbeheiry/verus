@@ -53,22 +53,6 @@ pub fn ensures<A>(_a: A) {
     unimplemented!();
 }
 
-// Can only appear at beginning of function body
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::guard_ensures"]
-#[verifier::proof]
-pub fn guard_ensures<A>(_a: A) {
-    unimplemented!();
-}
-
-// Can only appear at beginning of function body
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::guard_effects"]
-#[verifier::proof]
-pub fn guard_effects<A>(_a: A) {
-    unimplemented!();
-}
-
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::end_region"]
 #[verifier::proof]

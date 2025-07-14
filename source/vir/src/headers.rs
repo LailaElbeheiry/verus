@@ -99,48 +99,34 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                         }
                         recommend = Some(es.clone());
                     }
-                    HeaderExprX::Ensures(id_typ, es) => {
-                        if ensure.is_some() {
-                            return Err(error(
-                                &stmt.span,
-                                "only one call to ensures allowed (use ensures([e1, ..., en]) for multiple expressions",
-                            ));
+                    HeaderExprX::Postconditions(id_typ, es, ges, gef) => {
+                        if es.len() != 0 {
+                            if ensure.is_some() {
+                                return Err(error(
+                                    &stmt.span,
+                                    "only one call to ensures allowed (use ensures([e1, ..., en]) for multiple expressions",
+                                ));
+                            }
+                            ensure = Some((id_typ.clone(), es.clone()));
                         }
-                        ensure = Some((id_typ.clone(), es.clone()));
-                    }
-                    HeaderExprX::GuardEnsures(id_typ, es) => {
-                        if guard_ensure.is_some() {
-                            return Err(error(
-                                &stmt.span,
-                                "only one call to guard_ensures allowed (use guard_ensures([e1, ..., en]) for multiple expressions",
-                            ));
+                        if ges.len() != 0 {
+                            if guard_ensure.is_some() {
+                                return Err(error(
+                                    &stmt.span,
+                                    "only one call to guard_ensures allowed (use guard_ensures([e1, ..., en]) for multiple expressions",
+                                ));
+                            }
+                            guard_ensure = Some((id_typ.clone(), ges.clone()));
                         }
-                        guard_ensure = Some((id_typ.clone(), es.clone()));
-                    }
-                    HeaderExprX::EnsuresAndGuardEnsures(id_typ, es, ges) => {
-                        if ensure.is_some() {
-                            return Err(error(
-                                &stmt.span,
-                                "only one call to ensures allowed (use ensures([e1, ..., en]) for multiple expressions",
-                            ));
+                        if gef.len() != 0 {
+                            if guard_effects.is_some() {
+                                return Err(error(
+                                    &stmt.span,
+                                    "only one call to guard_effects allowed (use guard_effects([e1, ..., en]) for multiple expressions",
+                                ));
+                            }
+                            guard_effects = Some((id_typ.clone(), gef.clone()));
                         }
-                        ensure = Some((id_typ.clone(), es.clone()));
-                        if guard_ensure.is_some() {
-                            return Err(error(
-                                &stmt.span,
-                                "only one call to guard_ensures allowed (use guard_ensures([e1, ..., en]) for multiple expressions",
-                            ));
-                        }
-                        guard_ensure = Some((id_typ.clone(), ges.clone()));
-                    }
-                    HeaderExprX::GuardEffects(id_typ, es) => {
-                        if guard_effects.is_some() {
-                            return Err(error(
-                                &stmt.span,
-                                "only one call to guard_effects allowed (use guard_effects([e1, ..., en]) for multiple expressions",
-                            ));
-                        }
-                        guard_effects = Some((id_typ.clone(), es.clone()));
                     }
                     HeaderExprX::Returns(e) => {
                         if returns.is_some() {
