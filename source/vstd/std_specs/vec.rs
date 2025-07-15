@@ -22,6 +22,9 @@ pub trait VecAdditionalSpecFns<T>: View<V = Seq<T>> {
         recommends
             0 <= i < self.view().len(),
     ;
+
+    #[verifier::imaginary_field]
+    spec fn v(&self) -> Seq<T>;
 }
 
 impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
@@ -29,6 +32,9 @@ impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
     open spec fn spec_index(&self, i: int) -> T {
         self.view().index(i)
     }
+
+    #[verifier::imaginary_field]
+    open spec fn v(&self) -> Seq<T>;
 }
 
 // TODO this should really be an 'assume_specification' function

@@ -633,6 +633,10 @@ impl Visitor {
                 };
             }
             if cont || g_ens_len > 0 || g_eff_len > 0 {
+                if !specs.empty_or_trailing() {
+                    specs.push_punct(Token![,](specs.last().unwrap().span()));
+                }
+
                 if let Some((ref p, ref ty)) = ret_pat {
                     if let Some(ref final_ret_pat) = final_ret_pat {
                         for (i, expr) in specs.iter_mut().enumerate() {
@@ -809,7 +813,7 @@ impl Visitor {
             let span = sig.fn_token.span;
             attrs.push(mk_rust_attr(span, "cfg", quote! { verus_keep_ghost }));
             attrs.push(mk_rust_attr(span, "allow", quote! { non_snake_case }));
-            attrs.push(mk_verus_attr(span, quote! { open }));
+            if !is_trait { attrs.push(mk_verus_attr(span, quote! { open })); }
             attrs.push(mk_verus_attr(span, quote! { spec }));
 
             let mut path_segments = syn_verus::punctuated::Punctuated::new();
@@ -828,7 +832,7 @@ impl Visitor {
                 bracket_token: syn_verus::token::Bracket { span: into_spans(span) },
                 meta: syn_verus::Meta::Path(path),
             };
-            attrs.push(attr);
+            if !is_trait { attrs.push(attr); }
         }
 
         for arg in &mut sig.inputs {
@@ -997,8 +1001,15 @@ impl Visitor {
         };
 
         if is_imaginary_field {
-            let s = sig.ident.to_string();
-            sig.ident = syn::Ident::new(&format!("arrow_{s}"), sig.ident.span());
+            let mut s = sig.ident.to_string();
+            if s.starts_with(VERUS_SPEC) {
+                s.insert_str(VERUS_SPEC.len(), "arrow_");
+            }
+            else {
+                s.insert_str(0, "arrow_");
+            }
+
+            sig.ident = syn::Ident::new(&s, sig.ident.span());
         }
 
         let (inside_ghost, mode_attrs): (u32, Vec<Attribute>) = match &sig.mode {

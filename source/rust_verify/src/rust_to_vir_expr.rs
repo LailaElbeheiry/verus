@@ -18,7 +18,7 @@ use crate::verus_items::{
     self, CompilableOprItem, InvariantItem, OpenInvariantBlockItem, RustItem, SpecGhostTrackedItem,
     UnaryOpItem, VerusItem, VstdItem,
 };
-use crate::{fn_call_to_vir::fn_call_to_vir, unsupported_err, unsupported_err_unless};
+use crate::{fn_call_to_vir::fn_call_to_vir, unsupported_err, unsupported_err_unless, err_unless};
 use air::ast::Binder;
 use air::ast_util::str_ident;
 use rustc_ast::LitKind;
@@ -107,7 +107,7 @@ pub(crate) fn extract_len_and_array<'tcx>(
             let g_ens_len = extract_len(g_ens_len)?;
             let g_eff_len = extract_len(g_eff_len)?;
             let specs = extract_tuple(specs);
-            unsupported_err_unless!(
+            err_unless!(
                 specs.len() == ens_len + g_ens_len + g_eff_len,
                 expr.span,
                 "Error in parsing function specs"

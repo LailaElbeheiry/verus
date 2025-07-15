@@ -22,6 +22,7 @@ pub trait ResultAdditionalSpecFns<T, E> {
     spec fn get_Ok_0(&self) -> T;
 
     #[allow(non_snake_case)]
+    #[verifier::enum_accessor]
     spec fn arrow_Ok_0(&self) -> T;
 
     #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
@@ -33,6 +34,7 @@ pub trait ResultAdditionalSpecFns<T, E> {
     spec fn get_Err_0(&self) -> E;
 
     #[allow(non_snake_case)]
+    #[verifier::enum_accessor]
     spec fn arrow_Err_0(&self) -> E;
 }
 

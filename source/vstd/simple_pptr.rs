@@ -167,7 +167,7 @@ pub tracked struct PointsTo<V> {
 
 impl<V> PointsTo<V> {
     #[verifier::imaginary_field]
-    pub open spec fn v(self) -> V;
+    pub open spec fn v(&self) -> V;
 }
 
 #[verusfmt::skip]
@@ -507,6 +507,8 @@ impl<V> PPtr<V> {
         requires
             old(perm).pptr() == self,
             old(perm).is_init(),
+        guard_requires
+        		guards(*old(perm), self),
         ensures
             perm.pptr() == old(perm).pptr(),
             perm.mem_contents() == MemContents::Init(in_v),

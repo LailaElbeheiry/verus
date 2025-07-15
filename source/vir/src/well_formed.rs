@@ -1115,7 +1115,6 @@ fn check_function(
                 for field in fields.iter() {
                     // check that p is simple
                     if !is_ok(ctxt, &field.a) {
-                        dbg!(field);
                         return Err(error(
                             &field.a.span,
                             "complex expressions in `guard_effects` clauses are not allowed",

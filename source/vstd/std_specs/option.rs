@@ -41,6 +41,7 @@ pub trait OptionAdditionalFns<T>: Sized {
     spec fn is_None(&self) -> bool;
 
     #[allow(non_snake_case)]
+    #[verifier::enum_accessor]
     spec fn arrow_Some_0(&self) -> T;
 
     #[allow(non_snake_case)]
@@ -64,6 +65,8 @@ pub trait OptionAdditionalFns<T>: Sized {
             self.tracked_is_some(),
         ensures
             t == self->0,
+        guard_effects
+            t = self->0
     ;
 
     proof fn tracked_borrow(tracked &self) -> (tracked t: &T)
@@ -71,6 +74,8 @@ pub trait OptionAdditionalFns<T>: Sized {
             self.tracked_is_some(),
         ensures
             t == self->0,
+        guard_effects
+            t = &self->0
     ;
 
     proof fn tracked_take(tracked &mut self) -> (tracked t: T)
@@ -79,6 +84,8 @@ pub trait OptionAdditionalFns<T>: Sized {
         ensures
             t == old(self)->0,
             !self.tracked_is_some(),
+        guard_effects
+            t = self->0
     ;
 }
 
@@ -173,6 +180,8 @@ pub assume_specification<T>[ Option::<T>::as_ref ](option: &Option<T>) -> (a: Op
     ensures
         a is Some <==> option is Some,
         a is Some ==> option->0 == a->0,
+    guard_effects
+        a->0 = &(*a->0),
 ;
 
 // unwrap
@@ -236,7 +245,7 @@ pub assume_specification<T>[ Option::<T>::take ](option: &mut Option<T>) -> (t: 
         t == old(option),
         *option is None,
     guard_effects
-        t->0 = old(option)->0,
+        t->0 = (*old(option))->0,
 ;
 
 // map
@@ -271,6 +280,8 @@ pub open spec fn spec_ok_or<T, E>(option: Option<T>, err: E) -> Result<T, E> {
 pub assume_specification<T, E>[ Option::ok_or ](option: Option<T>, err: E) -> (res: Result<T, E>)
     ensures
         res == spec_ok_or(option, err),
+    guard_effects
+        res->Ok_0 = option->0,
 ;
 
 } // verus!
